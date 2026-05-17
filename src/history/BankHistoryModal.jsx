@@ -10,6 +10,29 @@ const formatDateBr = (ymd) => {
   return `${d}/${m}/${y}`;
 };
 
+function VideoCard({ url }) {
+  const [meta, setMeta] = useState(null);
+  const isPortrait = meta ? meta.h > meta.w : false;
+
+  return (
+    <div className="bg-black rounded-2xl overflow-hidden border border-gray-200">
+      <div className={`mx-auto w-full ${isPortrait ? 'max-w-[420px]' : ''}`}>
+        <video
+          src={url}
+          controls
+          playsInline
+          onLoadedMetadata={(e) => {
+            const w = e.currentTarget.videoWidth;
+            const h = e.currentTarget.videoHeight;
+            if (w && h) setMeta({ w, h });
+          }}
+          className="w-full max-h-[65vh] bg-black object-contain"
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(getTodayYmd());
@@ -157,9 +180,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
             {tab === 'video' && hasVideo && (
               <div className="space-y-4">
                 {day.videos.map((url, idx) => (
-                  <div key={`${url}-${idx}`} className="bg-black rounded-2xl overflow-hidden border border-gray-200">
-                    <video src={url} controls className="w-full max-h-[60vh] bg-black" />
-                  </div>
+                  <VideoCard key={`${url}-${idx}`} url={url} />
                 ))}
               </div>
             )}
@@ -209,4 +230,3 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
     </div>
   );
 }
-

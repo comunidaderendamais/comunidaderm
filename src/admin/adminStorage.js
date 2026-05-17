@@ -7,7 +7,8 @@ export const BANK_STATUS = {
 };
 
 export const defaultAdminConfig = {
-  version: 2,
+  version: 4,
+  globalSold: 45230,
   banks: {
     rm1: {
       id: 'rm1',
@@ -40,13 +41,27 @@ export const defaultAdminConfig = {
       profitMonthPct: 0,
     },
   },
+  support: {
+    finance: { id: 'finance', name: 'Suporte 1 (Financeiro)', online: true, queue: 0 },
+    tech: { id: 'tech', name: 'Suporte 2 (Técnico)', online: true, queue: 2 },
+  },
 };
 
 export const normalizeAdminConfig = (cfg) => {
   const banks = cfg?.banks ?? {};
-  const next = { ...defaultAdminConfig, ...cfg, banks: { ...defaultAdminConfig.banks } };
+  const support = cfg?.support ?? {};
+  const next = {
+    ...defaultAdminConfig,
+    ...cfg,
+    globalSold: typeof cfg?.globalSold === 'number' ? cfg.globalSold : defaultAdminConfig.globalSold,
+    banks: { ...defaultAdminConfig.banks },
+    support: { ...defaultAdminConfig.support },
+  };
   Object.keys(defaultAdminConfig.banks).forEach((id) => {
     next.banks[id] = { ...defaultAdminConfig.banks[id], ...(banks[id] || {}) };
+  });
+  Object.keys(defaultAdminConfig.support).forEach((id) => {
+    next.support[id] = { ...defaultAdminConfig.support[id], ...(support[id] || {}) };
   });
   return next;
 };
@@ -67,6 +82,7 @@ export const loadAdminConfig = () => {
       ...parsed,
       version: defaultAdminConfig.version,
       banks: { ...(parsed?.banks || {}) },
+      support: { ...(parsed?.support || {}) },
     };
 
     Object.keys(defaultAdminConfig.banks).forEach((id) => {
@@ -74,6 +90,13 @@ export const loadAdminConfig = () => {
         ...(parsed?.banks?.[id] || {}),
         profitAccumulatedPct: defaultAdminConfig.banks[id].profitAccumulatedPct,
         profitMonthPct: defaultAdminConfig.banks[id].profitMonthPct,
+      };
+    });
+
+    Object.keys(defaultAdminConfig.support).forEach((id) => {
+      migrated.support[id] = {
+        ...defaultAdminConfig.support[id],
+        ...(parsed?.support?.[id] || {}),
       };
     });
 

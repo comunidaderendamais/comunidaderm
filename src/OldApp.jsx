@@ -7,6 +7,9 @@ import {
 import AdminView from './admin/AdminView.jsx';
 import { BANK_STATUS, getBankByQuotaKey, loadAdminConfig, saveAdminConfig } from './admin/adminStorage.js';
 import BankHistoryModal from './history/BankHistoryModal.jsx';
+import SupportModal from './support/SupportModal.jsx';
+import FaqModal from './support/FaqModal.jsx';
+import { getUnreadCountForUser, loadSupportState } from './support/supportStorage';
 
 // --- THEME CONSTANTS ---
 const THEME = {
@@ -129,6 +132,42 @@ const normalizeUser = (u) => {
   const transactions = Array.isArray(u?.transactions) ? u.transactions : [];
   return { ...u, wallets, balances, holdings, transactions };
 };
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error) {
+    try {
+      localStorage.setItem('rm_last_error', JSON.stringify({ at: new Date().toISOString(), message: String(error?.message || error) }));
+    } catch {}
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div className="min-h-screen bg-[#1A1A1A] text-white flex items-center justify-center p-6">
+        <div className="max-w-xl w-full bg-black/30 border border-red-500/50 rounded-2xl p-6">
+          <h2 className="text-xl font-black mb-2">Ocorreu um erro na tela</h2>
+          <p className="text-sm text-gray-300 break-words">{String(this.state.error?.message || this.state.error || 'Erro desconhecido')}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 rounded-xl bg-[#00FF00] text-black font-black"
+          >
+            Recarregar
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
 
 const AuthFlow = ({ onLogin, lang, setLang }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -293,7 +332,7 @@ const Sidebar = ({ isOpen, setIsOpen, currentView, setCurrentView, lang, onLogou
   );
 };
 
-const Header = ({ user, toggleSidebar, lang, setLang, setCurrentView }) => {
+const Header = ({ user, toggleSidebar, lang, setLang, setCurrentView, notificationsCount }) => {
   const t = TRANSLATIONS[lang];
   const refLink = `https://comunidaderm.com/ref/${user?.username || 'user'}`;
   const [copied, setCopied] = useState(false);
@@ -330,7 +369,11 @@ const Header = ({ user, toggleSidebar, lang, setLang, setCurrentView }) => {
 
           <button className="text-gray-400 hover:text-[#00FF00] relative">
             <Bell size={20} />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full">3</span>
+            {Number(notificationsCount || 0) > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-4 h-4 px-1 flex items-center justify-center rounded-full">
+                {notificationsCount > 99 ? '99+' : notificationsCount}
+              </span>
+            )}
           </button>
 
           {/* User Profile Dropdown */}
@@ -375,17 +418,21 @@ const Header = ({ user, toggleSidebar, lang, setLang, setCurrentView }) => {
   );
 };
 
-const HomeView = ({ lang, adminConfig, onOpenBankHistory }) => {
+const HomeView = ({ lang, adminConfig, user, onOpenBankHistory }) => {
   const t = TRANSLATIONS[lang];
-  // Simulando dados para o protótipo
+  
   const totalLimit = 100000;
-  const currentSold = 45230;
-  const percentage = (currentSold / totalLimit) * 100;
+  const currentSold = adminConfig?.globalSold || 45230;
+  const percentage = Math.min((currentSold / totalLimit) * 100, 100);
+
+  const formatMoney = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  
+  const currentUser = normalizeUser(user);
 
   const cards = [
-    { title: t.invested, value: '$350.00', desc: 'Cota 10 + Cota 50', color: 'border-blue-500' },
-    { title: t.teamEarnings, value: '$124.50', desc: 'Até 5º Nível', color: 'border-[#00FF00]' },
-    { title: t.totalBalance, value: '$474.50', desc: 'Disponível para saque', color: 'border-[#8A2BE2]' },
+    { title: t.invested, value: formatMoney(currentUser.balances.invested), desc: 'Cotas compradas', color: 'border-blue-500' },
+    { title: t.teamEarnings, value: formatMoney(currentUser.balances.teamEarnings), desc: 'Até 5º Nível', color: 'border-[#00FF00]' },
+    { title: t.totalBalance, value: formatMoney(currentUser.balances.available), desc: 'Disponível para saque', color: 'border-[#8A2BE2]' },
     { title: t.rank, value: 'BRONZE', desc: 'Vol: $2,100 / $5,000 (Silver)', color: 'border-yellow-500' },
   ];
 
@@ -499,11 +546,11 @@ const HomeView = ({ lang, adminConfig, onOpenBankHistory }) => {
   );
 };
 
-const QuotasView = ({ user, setUser, adminConfig }) => {
+const QuotasView = ({ user, setUser, adminConfig, onBuy }) => {
   const plans = [
-    { key: 'cota10', title: 'COTA 10', price: 10, dailyPct: 1.0, monthlyPct: 30, systemText: '1 Cota no sistema', variant: 'light' },
-    { key: 'cota50', title: 'COTA 50', price: 50, dailyPct: 1.1, monthlyPct: 33, systemText: '5 Cotas no sistema', variant: 'dark' },
-    { key: 'cota100', title: 'COTA 100', price: 100, dailyPct: 1.2, monthlyPct: 36, systemText: '10 Cotas no sistema', variant: 'light' },
+    { key: 'cota10', title: 'COTA 10', price: 10, quotas: 1, dailyPct: 1.0, monthlyPct: 30, systemText: '1 Cota no sistema', variant: 'light' },
+    { key: 'cota50', title: 'COTA 50', price: 50, quotas: 5, dailyPct: 1.1, monthlyPct: 33, systemText: '5 Cotas no sistema', variant: 'dark' },
+    { key: 'cota100', title: 'COTA 100', price: 100, quotas: 10, dailyPct: 1.2, monthlyPct: 36, systemText: '10 Cotas no sistema', variant: 'light' },
   ];
 
   const [qty, setQty] = useState({ cota10: 1, cota50: 1, cota100: 1 });
@@ -518,66 +565,76 @@ const QuotasView = ({ user, setUser, adminConfig }) => {
   };
 
   const handleBuy = (plan) => {
-    const bank = getBankByQuotaKey(adminConfig, plan.key);
-    if (!bank || bank.status !== BANK_STATUS.active) {
-      alert('Esta banca está indisponível no momento.');
-      return;
-    }
-    const count = Math.max(1, Number.parseInt(qty[plan.key] || 1, 10));
-    const paymentCoin = coin[plan.key];
-    const paymentNetwork = paymentCoin === 'USDT' ? network[plan.key] : paymentCoin === 'USDC' ? 'ARBITRUM' : null;
+    try {
+      const bank = getBankByQuotaKey(adminConfig, plan.key);
+      if (!bank || bank.status !== BANK_STATUS.active) {
+        alert('Esta banca está indisponível no momento.');
+        return;
+      }
+      const count = Math.max(1, Number.parseInt(qty[plan.key] || 1, 10));
+      const paymentCoin = coin[plan.key];
+      const paymentNetwork = paymentCoin === 'USDT' ? network[plan.key] : paymentCoin === 'USDC' ? 'ARBITRUM' : null;
 
-    if (!paymentCoin) {
-      alert('Selecione a forma de pagamento.');
-      return;
-    }
+      if (!paymentCoin) {
+        alert('Selecione a forma de pagamento.');
+        return;
+      }
 
-    if (paymentCoin === 'USDT' && !paymentNetwork) {
-      alert('Selecione a rede do USDT.');
-      return;
-    }
+      if (paymentCoin === 'USDT' && !paymentNetwork) {
+        alert('Selecione a rede do USDT.');
+        return;
+      }
 
-    const total = plan.price * count;
-    const currentUser = normalizeUser(user);
-    const currentAvailable = Number(currentUser?.balances?.available || 0);
+      const total = plan.price * count;
+      const currentUser = normalizeUser(user);
+      const currentAvailable = Number(currentUser?.balances?.available || 0);
 
-    if (paymentCoin === 'SALDO' && currentAvailable < total) {
-      alert('Saldo disponível insuficiente para essa compra.');
-      return;
-    }
+      if (paymentCoin === 'SALDO' && currentAvailable < total) {
+        alert('Saldo disponível insuficiente para essa compra.');
+        return;
+      }
 
-    const nextBalances = { ...currentUser.balances };
-    if (paymentCoin === 'SALDO') {
-      nextBalances.available = Number((currentAvailable - total).toFixed(2));
-    }
-    nextBalances.invested = Number((Number(nextBalances.invested || 0) + total).toFixed(2));
+      const nextBalances = { ...currentUser.balances };
+      if (paymentCoin === 'SALDO') {
+        nextBalances.available = Number((currentAvailable - total).toFixed(2));
+      }
+      nextBalances.invested = Number((Number(nextBalances.invested || 0) + total).toFixed(2));
 
-    const nextHoldings = { ...currentUser.holdings };
-    nextHoldings[plan.key] = Number(nextHoldings[plan.key] || 0) + count;
+      const nextHoldings = { ...currentUser.holdings };
+      nextHoldings[plan.key] = Number(nextHoldings[plan.key] || 0) + count;
 
-    const now = new Date();
-    const tx = {
-      id: `${now.getTime()}-${plan.key}`,
-      at: now.toISOString(),
-      type: `Compra ${plan.title}`,
-      amount: -total,
-      payment: paymentCoin === 'SALDO' ? 'SALDO' : `${paymentCoin} ${paymentNetwork || ''}`.trim(),
-      status: paymentCoin === 'SALDO' ? 'Concluído' : 'Pendente',
-    };
+      const now = new Date();
+      const tx = {
+        id: `${now.getTime()}-${plan.key}`,
+        at: now.toISOString(),
+        type: `Compra ${plan.title}`,
+        amount: -total,
+        payment: paymentCoin === 'SALDO' ? 'SALDO' : `${paymentCoin} ${paymentNetwork || ''}`.trim(),
+        status: paymentCoin === 'SALDO' ? 'Concluído' : 'Pendente',
+      };
 
-    const updatedUser = {
-      ...currentUser,
-      balances: nextBalances,
-      holdings: nextHoldings,
-      transactions: [tx, ...currentUser.transactions],
-    };
+      const updatedUser = {
+        ...currentUser,
+        balances: nextBalances,
+        holdings: nextHoldings,
+        transactions: [tx, ...currentUser.transactions],
+      };
 
-    persistUser(updatedUser);
+      persistUser(updatedUser);
 
-    if (paymentCoin === 'SALDO') {
-      alert('Compra realizada com saldo disponível.');
-    } else {
-      alert(`Compra criada em modo simulação: ${paymentCoin} (${paymentNetwork}).`);
+      try {
+        if (onBuy) onBuy(plan.quotas * count);
+      } catch (err) {
+        alert(`Compra registrada, mas ocorreu um erro ao atualizar o painel: ${String(err?.message || err)}`);
+      }
+
+      if (paymentCoin === 'SALDO') {
+        alert('Compra realizada com saldo disponível.');
+      } else {
+        alert(`Compra criada em modo simulação: ${paymentCoin} (${paymentNetwork}).`);
+      }
+    } catch (err) {
+      alert(`Erro ao processar compra: ${String(err?.message || err)}`);
     }
   };
 
@@ -769,7 +826,34 @@ const SettingsView = ({ user, setUser }) => {
 };
 
 const WalletView = ({ setCurrentView, user }) => {
-  const hasWallet = user?.wallets?.usdtBep20 || user?.wallets?.usdtTrc20 || user?.wallets?.usdcArbitrum;
+  const currentUser = normalizeUser(user);
+  const hasWallet = currentUser?.wallets?.usdtBep20 || currentUser?.wallets?.usdtTrc20 || currentUser?.wallets?.usdcArbitrum;
+  
+  const formatMoney = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  
+  const formatDate = (isoString) => {
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleString('pt-BR', { dateStyle: 'short' });
+    } catch {
+      return isoString;
+    }
+  };
+
+  const reports = currentUser.transactions.map((tx, i) => ({
+    id: tx.id || i,
+    date: formatDate(tx.at),
+    type: tx.type,
+    value: `$${Math.abs(tx.amount).toFixed(2)}`,
+    status: tx.status,
+    color: tx.amount > 0 ? 'text-green-600' : 'text-red-500'
+  }));
+
+  if (reports.length === 0) {
+    reports.push(
+      { id: 1, date: '10/05/2026', type: 'Compra de Cota 50', value: '$50.00', status: 'Concluído', color: 'text-gray-500' }
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
@@ -790,11 +874,11 @@ const WalletView = ({ setCurrentView, user }) => {
           <div className="flex justify-between items-end mb-6">
             <div>
               <p className="text-sm text-gray-500">Valor Liberado</p>
-              <p className="text-4xl font-black text-[#8A2BE2]">$124.50</p>
+              <p className="text-4xl font-black text-[#8A2BE2]">{formatMoney(currentUser.balances.available)}</p>
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-500">Total Aplicado</p>
-              <p className="text-xl font-bold text-gray-700">$350.00</p>
+              <p className="text-xl font-bold text-gray-700">{formatMoney(currentUser.balances.invested)}</p>
             </div>
           </div>
 
@@ -833,18 +917,14 @@ const WalletView = ({ setCurrentView, user }) => {
               </tr>
             </thead>
             <tbody className="text-sm text-gray-700">
-              <tr className="border-b border-gray-50">
-                <td className="p-4">12/05/2026</td>
-                <td className="p-4">Saque (USDT BEP-20)</td>
-                <td className="p-4"><span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">Pendente</span></td>
-                <td className="p-4 text-right font-bold">-$50.00</td>
-              </tr>
-              <tr className="border-b border-gray-50">
-                <td className="p-4">10/05/2026</td>
-                <td className="p-4">Compra de Cota 50</td>
-                <td className="p-4"><span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Concluído</span></td>
-                <td className="p-4 text-right font-bold text-gray-500">$50.00</td>
-              </tr>
+              {reports.map(rep => (
+                <tr key={rep.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <td className="p-4 whitespace-nowrap">{rep.date}</td>
+                  <td className="p-4">{rep.type}</td>
+                  <td className="p-4"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{rep.status}</span></td>
+                  <td className={`p-4 text-right font-bold ${rep.color}`}>-{rep.value}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -982,14 +1062,34 @@ const BonusView = () => {
   );
 };
 
-const ReportsView = () => {
-  const reports = [
-    { id: 1, date: '13/05/2026 18:00', type: 'Rendimento Cotas Diário (1%)', value: '+$1.50', status: 'Creditado', color: 'text-green-600' },
-    { id: 2, date: '12/05/2026 18:00', type: 'Rendimento Cotas Diário (1%)', value: '+$1.50', status: 'Creditado', color: 'text-green-600' },
-    { id: 3, date: '11/05/2026 10:20', type: 'Ganho de Rede (Nível 1)', value: '+$4.00', status: 'Creditado', color: 'text-blue-600' },
-    { id: 4, date: '10/05/2026 15:30', type: 'Compra Cota 50', value: '-$50.00', status: 'Ativa', color: 'text-red-500' },
-    { id: 5, date: '05/05/2026 09:15', type: 'Saque (USDT BEP-20)', value: '-$20.00', status: 'Concluído', color: 'text-gray-600' },
-  ];
+const ReportsView = ({ user }) => {
+  const currentUser = normalizeUser(user);
+  
+  const formatDate = (isoString) => {
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    } catch {
+      return isoString;
+    }
+  };
+
+  const reports = currentUser.transactions.map((tx, i) => ({
+    id: tx.id || i,
+    date: formatDate(tx.at),
+    type: tx.type,
+    value: `$${Math.abs(tx.amount).toFixed(2)}`,
+    status: tx.status,
+    color: tx.amount > 0 ? 'text-green-600' : 'text-red-500'
+  }));
+
+  if (reports.length === 0) {
+    reports.push(
+      { id: 1, date: '13/05/2026 18:00', type: 'Rendimento Cotas Diário (1%)', value: '$1.50', status: 'Creditado', color: 'text-green-600' },
+      { id: 2, date: '12/05/2026 18:00', type: 'Rendimento Cotas Diário (1%)', value: '$1.50', status: 'Creditado', color: 'text-green-600' },
+      { id: 3, date: '11/05/2026 10:20', type: 'Ganho de Rede (Nível 1)', value: '$4.00', status: 'Creditado', color: 'text-blue-600' }
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
@@ -1033,6 +1133,10 @@ const App = () => {
   const [currentView, setCurrentView] = useState('home');
   const [adminConfig, setAdminConfig] = useState(loadAdminConfig());
   const [historyModal, setHistoryModal] = useState({ open: false, bankId: null, bankName: null });
+  const [supportModal, setSupportModal] = useState({ open: false, channel: null, name: null });
+  const [faqOpen, setFaqOpen] = useState(false);
+  const [supportMenuOpen, setSupportMenuOpen] = useState(false);
+  const [supportUnread, setSupportUnread] = useState(0);
 
   useEffect(() => {
     // Verifica se há usuário no localStorage ao carregar
@@ -1048,6 +1152,30 @@ const App = () => {
     const cfg = loadAdminConfig();
     setAdminConfig(cfg);
   }, []);
+
+  useEffect(() => {
+    const email = (user?.email || '').toLowerCase();
+    if (!email) return;
+
+    const compute = () => {
+      const st = loadSupportState();
+      setSupportUnread(getUnreadCountForUser(st, email));
+    };
+
+    compute();
+
+    const intervalId = window.setInterval(compute, 2000);
+
+    const onStorage = (e) => {
+      if (e?.key === 'rm_support') compute();
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [user?.email]);
 
   const handleLogin = (u) => {
     const normalized = normalizeUser(u);
@@ -1074,15 +1202,32 @@ const App = () => {
           <HomeView
             lang={lang}
             adminConfig={adminConfig}
+            user={user}
             onOpenBankHistory={(bank) => {
               setHistoryModal({ open: true, bankId: bank.id, bankName: bank.name });
             }}
           />
         );
-      case 'quotas': return <QuotasView user={user} setUser={setUser} adminConfig={adminConfig} />;
+      case 'quotas': 
+        return (
+          <QuotasView 
+            user={user} 
+            setUser={setUser} 
+            adminConfig={adminConfig} 
+            onBuy={(quotasBought) => {
+              const base = Number.isFinite(Number(adminConfig?.globalSold)) ? Number(adminConfig.globalSold) : 45230;
+              const inc = Number.isFinite(Number(quotasBought)) ? Number(quotasBought) : 0;
+              const newGlobalSold = base + inc;
+              const saved = saveAdminConfig({ ...adminConfig, globalSold: newGlobalSold });
+              setAdminConfig(saved);
+              const currentUnread = Number(supportUnread || 0);
+              setSupportUnread(currentUnread + 1);
+            }} 
+          />
+        );
       case 'team': return <TeamView />;
       case 'wallet': return <WalletView setCurrentView={setCurrentView} user={user} />;
-      case 'reports': return <ReportsView />;
+      case 'reports': return <ReportsView user={user} />;
       case 'bonus': return <BonusView />;
       case 'settings': return <SettingsView user={user} setUser={setUser} />;
       case 'admin':
@@ -1101,6 +1246,7 @@ const App = () => {
           <HomeView
             lang={lang}
             adminConfig={adminConfig}
+            user={user}
             onOpenBankHistory={(bank) => {
               setHistoryModal({ open: true, bankId: bank.id, bankName: bank.name });
             }}
@@ -1110,29 +1256,31 @@ const App = () => {
   };
 
   return (
-    <div className="flex h-screen bg-[#F3F4F6] font-sans overflow-hidden">
-      <Sidebar 
-        isOpen={sidebarOpen} 
-        setIsOpen={setSidebarOpen} 
-        currentView={currentView}
-        setCurrentView={setCurrentView}
-        lang={lang}
-        isAdmin={isAdmin}
-        onLogout={handleLogout}
-      />
-      
-      <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 lg:ml-64 relative overflow-hidden">
-        <Header 
-          user={user} 
-          toggleSidebar={() => setSidebarOpen(!sidebarOpen)} 
-          lang={lang}
-          setLang={setLang}
+    <ErrorBoundary>
+      <div className="flex h-screen bg-[#F3F4F6] font-sans overflow-hidden">
+        <Sidebar 
+          isOpen={sidebarOpen} 
+          setIsOpen={setSidebarOpen} 
+          currentView={currentView}
           setCurrentView={setCurrentView}
+          lang={lang}
+          isAdmin={isAdmin}
+          onLogout={handleLogout}
         />
         
-        <main className="flex-1 overflow-y-auto bg-gray-50 relative pb-20">
-          {renderView()}
-        </main>
+        <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 lg:ml-64 relative overflow-hidden">
+          <Header 
+            user={user} 
+            toggleSidebar={() => setSidebarOpen(!sidebarOpen)} 
+            lang={lang}
+            setLang={setLang}
+            setCurrentView={setCurrentView}
+            notificationsCount={supportUnread}
+          />
+          
+          <main className="flex-1 overflow-y-auto bg-gray-50 relative pb-20">
+            {renderView()}
+          </main>
 
         <BankHistoryModal
           isOpen={historyModal.open}
@@ -1144,27 +1292,81 @@ const App = () => {
           }}
         />
 
+        <SupportModal
+          isOpen={supportModal.open}
+          channel={supportModal.channel}
+          channelName={supportModal.name}
+          isOnline={Boolean(adminConfig?.support?.[supportModal.channel]?.online)}
+          queue={Number(adminConfig?.support?.[supportModal.channel]?.queue || 0)}
+          user={user}
+          onClose={() => {
+            setSupportModal({ open: false, channel: null, name: null });
+            setSupportMenuOpen(false);
+            const st = loadSupportState();
+            setSupportUnread(getUnreadCountForUser(st, (user?.email || '').toLowerCase()));
+          }}
+        />
+
+        <FaqModal
+          isOpen={faqOpen}
+          onClose={() => {
+            setFaqOpen(false);
+            setSupportMenuOpen(false);
+          }}
+        />
+
         {/* Floating Support Button */}
         <div className="fixed bottom-6 right-6 z-40 group flex flex-col items-end gap-3">
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-end gap-2 translate-y-4 group-hover:translate-y-0 duration-300">
-             <div className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-bold flex items-center gap-2 cursor-pointer hover:bg-gray-50">
-               Suporte 1 (Financeiro) <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">Online</span>
-             </div>
-             <div className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-bold flex items-center gap-2 cursor-pointer hover:bg-gray-50">
-               Suporte 2 (Técnico) <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs">Fila: 2</span>
-             </div>
-             <div className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-bold flex items-center gap-2 cursor-pointer hover:bg-gray-50">
-               FAQ / Dúvidas Frequentes
-             </div>
+          <div className={`${supportMenuOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto'} transition-all flex flex-col items-end gap-2 duration-300`}>
+            <button
+              type="button"
+              onClick={() => {
+                setSupportModal({ open: true, channel: 'finance', name: 'Suporte 1 (Financeiro)' });
+              }}
+              className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+            >
+              Suporte 1 (Financeiro)
+              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${adminConfig?.support?.finance?.online ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                {adminConfig?.support?.finance?.online ? 'Online' : 'Offline'}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSupportModal({ open: true, channel: 'tech', name: 'Suporte 2 (Técnico)' });
+              }}
+              className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+            >
+              Suporte 2 (Técnico)
+              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${adminConfig?.support?.tech?.online ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                {adminConfig?.support?.tech?.online ? 'Online' : `Fila: ${Number(adminConfig?.support?.tech?.queue || 0)}`}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFaqOpen(true)}
+              className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+            >
+              FAQ / Dúvidas Frequentes
+            </button>
           </div>
           
-          <button className="p-0 rounded-full shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:scale-105 transition-transform flex items-center justify-center border-2 border-[#00FF00] relative bg-[#1A1A1A]">
+          <button
+            type="button"
+            onClick={() => setSupportMenuOpen((s) => !s)}
+            className="p-0 rounded-full shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:scale-105 transition-transform flex items-center justify-center border-2 border-[#00FF00] relative bg-[#1A1A1A]"
+          >
             <img src="PERSONAGEM RENDA MAIS com LOGO.png" alt="Suporte" className="w-14 h-14 rounded-full object-cover" />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-xs px-2 py-1 rounded-full font-bold text-white shadow">1</span>
+            {Number(supportUnread || 0) > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-xs px-2 py-1 rounded-full font-bold text-white shadow">
+                {supportUnread > 99 ? '99+' : supportUnread}
+              </span>
+            )}
           </button>
         </div>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 
