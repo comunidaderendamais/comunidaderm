@@ -9,12 +9,16 @@ export default function AdminFaq() {
     setItems(loadFaqState().items);
   }, []);
 
-  const update = (idx, patch) => {
-    setItems((s) => s.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  const updateText = (idx, field, lang, value) => {
+    setItems((s) =>
+      s.map((it, i) =>
+        i === idx ? { ...it, [field]: { ...(it?.[field] || {}), [lang]: value } } : it
+      )
+    );
   };
 
   const add = () => {
-    setItems((s) => [{ q: '', a: '' }, ...s]);
+    setItems((s) => [{ q: { pt: '', en: '', es: '' }, a: { pt: '', en: '', es: '' } }, ...s]);
   };
 
   const remove = (idx) => {
@@ -80,22 +84,62 @@ export default function AdminFaq() {
 
             <div className="mt-4 space-y-3">
               <div>
-                <label className="block text-sm text-gray-600 mb-1 font-bold">Pergunta</label>
+                <label className="block text-sm text-gray-600 mb-1 font-bold">Pergunta (PT)</label>
                 <input
-                  value={it.q}
-                  onChange={(e) => update(idx, { q: e.target.value })}
+                  value={it?.q?.pt || ''}
+                  onChange={(e) => updateText(idx, 'q', 'pt', e.target.value)}
                   className="w-full p-3 bg-gray-50 border rounded-lg focus:ring-[#00FF00] outline-none"
                   placeholder="Ex.: Como funciona o saque?"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1 font-bold">Resposta</label>
+                <label className="block text-sm text-gray-600 mb-1 font-bold">Resposta (PT)</label>
                 <textarea
-                  value={it.a}
-                  onChange={(e) => update(idx, { a: e.target.value })}
+                  value={it?.a?.pt || ''}
+                  onChange={(e) => updateText(idx, 'a', 'pt', e.target.value)}
                   className="w-full p-3 bg-gray-50 border rounded-lg focus:ring-[#00FF00] outline-none min-h-28"
                   placeholder="Digite a resposta..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1 font-bold">Pergunta (EN)</label>
+                <input
+                  value={it?.q?.en || ''}
+                  onChange={(e) => updateText(idx, 'q', 'en', e.target.value)}
+                  className="w-full p-3 bg-gray-50 border rounded-lg focus:ring-[#00FF00] outline-none"
+                  placeholder="E.g.: How does withdrawal work?"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1 font-bold">Resposta (EN)</label>
+                <textarea
+                  value={it?.a?.en || ''}
+                  onChange={(e) => updateText(idx, 'a', 'en', e.target.value)}
+                  className="w-full p-3 bg-gray-50 border rounded-lg focus:ring-[#00FF00] outline-none min-h-28"
+                  placeholder="Type the answer..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1 font-bold">Pergunta (ES)</label>
+                <input
+                  value={it?.q?.es || ''}
+                  onChange={(e) => updateText(idx, 'q', 'es', e.target.value)}
+                  className="w-full p-3 bg-gray-50 border rounded-lg focus:ring-[#00FF00] outline-none"
+                  placeholder="Ej.: ¿Cómo funciona el retiro?"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1 font-bold">Resposta (ES)</label>
+                <textarea
+                  value={it?.a?.es || ''}
+                  onChange={(e) => updateText(idx, 'a', 'es', e.target.value)}
+                  className="w-full p-3 bg-gray-50 border rounded-lg focus:ring-[#00FF00] outline-none min-h-28"
+                  placeholder="Escribe la respuesta..."
                 />
               </div>
             </div>
@@ -105,4 +149,3 @@ export default function AdminFaq() {
     </div>
   );
 }
-

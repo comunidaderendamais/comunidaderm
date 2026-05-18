@@ -7,8 +7,17 @@ export const BANK_STATUS = {
 };
 
 export const defaultAdminConfig = {
-  version: 4,
+  version: 6,
   globalSold: 45230,
+  cycle: {
+    months: 6,
+    renewWindowHours: 72,
+    entryFeePct: 0.1,
+  },
+  elite: {
+    fortnightProfitUsd: 0,
+    lastPaidAt: null,
+  },
   banks: {
     rm1: {
       id: 'rm1',
@@ -50,13 +59,19 @@ export const defaultAdminConfig = {
 export const normalizeAdminConfig = (cfg) => {
   const banks = cfg?.banks ?? {};
   const support = cfg?.support ?? {};
+  const cycle = cfg?.cycle ?? {};
+  const elite = cfg?.elite ?? {};
   const next = {
     ...defaultAdminConfig,
     ...cfg,
     globalSold: typeof cfg?.globalSold === 'number' ? cfg.globalSold : defaultAdminConfig.globalSold,
+    cycle: { ...defaultAdminConfig.cycle },
+    elite: { ...defaultAdminConfig.elite },
     banks: { ...defaultAdminConfig.banks },
     support: { ...defaultAdminConfig.support },
   };
+  next.cycle = { ...defaultAdminConfig.cycle, ...(cycle || {}) };
+  next.elite = { ...defaultAdminConfig.elite, ...(elite || {}) };
   Object.keys(defaultAdminConfig.banks).forEach((id) => {
     next.banks[id] = { ...defaultAdminConfig.banks[id], ...(banks[id] || {}) };
   });
@@ -81,6 +96,8 @@ export const loadAdminConfig = () => {
     const migrated = {
       ...parsed,
       version: defaultAdminConfig.version,
+      cycle: { ...(parsed?.cycle || {}) },
+      elite: { ...(parsed?.elite || {}) },
       banks: { ...(parsed?.banks || {}) },
       support: { ...(parsed?.support || {}) },
     };

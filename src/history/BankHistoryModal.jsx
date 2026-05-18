@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Maximize2, Minimize2, CalendarDays, Clock } from 'lucide-react';
 import { getBankDayHistory, getTodayYmd, getYesterdayYmd, loadHistoryState, normalizeYmd } from './historyStorage';
+import { getT } from '../i18n/i18n.js';
 
 const chipBase = 'px-3 py-2 rounded-xl text-sm font-bold border transition';
 
-const formatDateBr = (ymd) => {
-  if (!ymd) return '';
-  const [y, m, d] = ymd.split('-');
-  return `${d}/${m}/${y}`;
+const getLocale = (lang) => {
+  const key = String(lang || '').trim().toLowerCase();
+  if (key === 'en') return 'en-US';
+  if (key === 'es') return 'es-ES';
+  return 'pt-BR';
 };
 
 function VideoCard({ url }) {
@@ -33,7 +35,9 @@ function VideoCard({ url }) {
   );
 }
 
-export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) {
+export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t, lang }) {
+  const tr = t || getT(lang);
+  const locale = getLocale(lang);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(getTodayYmd());
   const [lightboxUrl, setLightboxUrl] = useState(null);
@@ -87,7 +91,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
       <div className={`absolute ${isFullscreen ? 'inset-0' : 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(1100px,92vw)] h-[min(720px,88vh)]'} bg-white rounded-2xl shadow-2xl overflow-hidden border border-[#8A2BE2]`}>
         <div className="bg-[#1A1A1A] text-white border-b border-[#8A2BE2] px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-gray-300">Histórico da banca</p>
+            <p className="text-xs text-gray-300">{tr.historyTitle}</p>
             <h3 className="text-lg font-black truncate">{bankName || 'Banca'}</h3>
           </div>
 
@@ -95,7 +99,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
             <button
               onClick={() => setIsFullscreen((s) => !s)}
               className="h-10 w-10 rounded-xl border border-gray-700 hover:border-[#00FF00] flex items-center justify-center text-gray-200 hover:text-white"
-              title={isFullscreen ? 'Voltar' : 'Ampliar'}
+              title={isFullscreen ? tr.back : tr.expand}
               type="button"
             >
               {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
@@ -104,7 +108,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
             <button
               onClick={overlayClose}
               className="h-10 w-10 rounded-xl border border-gray-700 hover:border-red-500 flex items-center justify-center text-gray-200 hover:text-white"
-              title="Fechar"
+              title={tr.close}
               type="button"
             >
               <X size={18} />
@@ -120,7 +124,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
               className={`${chipBase} ${selectedDate === today ? 'bg-[#00FF00] text-black border-[#00FF00]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#00FF00]'}`}
             >
               <span className="inline-flex items-center gap-2">
-                <Clock size={16} /> Hoje
+                <Clock size={16} /> {tr.historyToday}
               </span>
             </button>
             <button
@@ -128,7 +132,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
               onClick={() => setSelectedDate(yesterday)}
               className={`${chipBase} ${selectedDate === yesterday ? 'bg-[#00FF00] text-black border-[#00FF00]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#00FF00]'}`}
             >
-              Ontem
+              {tr.historyYesterday}
             </button>
 
             <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2">
@@ -142,7 +146,10 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
             </div>
 
             <div className="ml-auto text-xs text-gray-500">
-              Data: <span className="font-bold text-gray-800">{formatDateBr(selectedDate)}</span>
+              {tr.historyDate}:{' '}
+              <span className="font-bold text-gray-800">
+                {selectedDate ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString(locale) : ''}
+              </span>
             </div>
           </div>
 
@@ -152,18 +159,18 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
               onClick={() => setTab('video')}
               className={`${chipBase} ${tab === 'video' ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#8A2BE2]'}`}
               disabled={!hasVideo}
-              title={!hasVideo ? 'Sem vídeo neste dia' : 'Vídeo'}
+              title={!hasVideo ? tr.historyNoVideo : tr.historyVideo}
             >
-              Vídeo
+              {tr.historyVideo}
             </button>
             <button
               type="button"
               onClick={() => setTab('images')}
               className={`${chipBase} ${tab === 'images' ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#8A2BE2]'}`}
               disabled={!hasImages}
-              title={!hasImages ? 'Sem imagens neste dia' : 'Imagens'}
+              title={!hasImages ? tr.historyNoImages : tr.historyImages}
             >
-              Imagens
+              {tr.historyImages}
             </button>
           </div>
         </div>
@@ -172,8 +179,8 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
           <div className="p-4">
             {!hasVideo && !hasImages && (
               <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center bg-gray-50">
-                <p className="text-lg font-black text-gray-800">Sem histórico nesta data</p>
-                <p className="text-sm text-gray-500 mt-2">Adicione URLs de vídeo/imagem no localStorage (rm_bank_history) para aparecer aqui.</p>
+                <p className="text-lg font-black text-gray-800">{tr.historyNoData}</p>
+                <p className="text-sm text-gray-500 mt-2">{tr.historyAddHint}</p>
               </div>
             )}
 
@@ -193,7 +200,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
                     type="button"
                     onClick={() => setLightboxUrl(url)}
                     className="group rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 hover:border-[#00FF00] transition"
-                    title="Clique para ampliar"
+                    title={tr.historyClickZoom}
                   >
                     <img src={url} alt={`Histórico ${idx + 1}`} className="w-full h-56 object-cover group-hover:scale-[1.02] transition-transform" />
                   </button>
@@ -213,13 +220,13 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose }) 
                   e.stopPropagation();
                   setLightboxUrl(null);
                 }}
-                title="Fechar"
+                title={tr.close}
               >
                 <X size={18} />
               </button>
               <img
                 src={lightboxUrl}
-                alt="Imagem ampliada"
+                alt={tr.historyImageZoomed}
                 className="w-full h-full object-contain rounded-2xl bg-black"
                 onClick={(e) => e.stopPropagation()}
               />

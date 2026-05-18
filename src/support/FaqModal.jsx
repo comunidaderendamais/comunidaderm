@@ -1,8 +1,10 @@
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { getT } from '../i18n/i18n.js';
 import { loadFaqState } from './faqStorage';
 
-export default function FaqModal({ isOpen, onClose }) {
+export default function FaqModal({ isOpen, onClose, t, lang }) {
+  const tr = t || getT(lang);
   const [items, setItems] = useState([]);
 
   useEffect(() => {
@@ -18,13 +20,13 @@ export default function FaqModal({ isOpen, onClose }) {
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(900px,92vw)] h-[min(780px,88vh)] bg-white rounded-2xl shadow-2xl overflow-hidden border border-[#8A2BE2]">
         <div className="bg-[#1A1A1A] text-white border-b border-[#8A2BE2] px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-gray-300">Central de ajuda</p>
-            <h3 className="text-lg font-black truncate">FAQ / Dúvidas Frequentes</h3>
+            <p className="text-xs text-gray-300">{tr.faqTitle}</p>
+            <h3 className="text-lg font-black truncate">{tr.faqSubtitle}</h3>
           </div>
           <button
             onClick={onClose}
             className="h-10 w-10 rounded-xl border border-gray-700 hover:border-red-500 flex items-center justify-center text-gray-200 hover:text-white"
-            title="Fechar"
+            title={tr.close}
             type="button"
           >
             <X size={18} />
@@ -33,12 +35,16 @@ export default function FaqModal({ isOpen, onClose }) {
 
         <div className="h-[calc(100%-56px)] overflow-y-auto p-4 bg-gray-50">
           <div className="space-y-3">
-            {items.map((item, idx) => (
-              <details key={idx} className="bg-white border border-gray-200 rounded-2xl p-4">
-                <summary className="cursor-pointer font-black text-gray-800">{item.q}</summary>
-                <p className="mt-2 text-sm text-gray-600 leading-relaxed">{item.a}</p>
-              </details>
-            ))}
+            {items.map((item, idx) => {
+              const q = typeof item?.q === 'string' ? item.q : item?.q?.[lang] || item?.q?.pt || '';
+              const a = typeof item?.a === 'string' ? item.a : item?.a?.[lang] || item?.a?.pt || '';
+              return (
+                <details key={idx} className="bg-white border border-gray-200 rounded-2xl p-4">
+                  <summary className="cursor-pointer font-black text-gray-800">{q}</summary>
+                  <p className="mt-2 text-sm text-gray-600 leading-relaxed">{a}</p>
+                </details>
+              );
+            })}
           </div>
         </div>
       </div>

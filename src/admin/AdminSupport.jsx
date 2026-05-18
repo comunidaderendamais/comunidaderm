@@ -157,7 +157,7 @@ export default function AdminSupport({ draft, setDraft, onSave }) {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h3 className="text-lg font-black text-gray-800">Status do Suporte</h3>
-            <p className="text-sm text-gray-500">Controle online e fila. As mensagens ficam no localStorage (FASE 1).</p>
+            <p className="text-sm text-gray-500">Controle online e fila. As mensagens ficam no localStorage.</p>
           </div>
           <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#00FF00]/20 text-green-700">
             Pendências: {unreadAdmin}

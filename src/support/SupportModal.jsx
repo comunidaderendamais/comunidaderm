@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Send as SendIcon } from 'lucide-react';
+import { getT } from '../i18n/i18n.js';
 import {
   addMessage,
   getOrCreateThread,
@@ -17,13 +18,14 @@ const formatTime = (iso) => {
   }
 };
 
-export default function SupportModal({ isOpen, channel, channelName, isOnline, queue, user, onClose }) {
+export default function SupportModal({ isOpen, channel, channelName, isOnline, queue, user, onClose, t }) {
   const [text, setText] = useState('');
   const [state, setState] = useState(() => loadSupportState());
   const listRef = useRef(null);
 
   const userEmail = (user?.email || '').toLowerCase();
-  const userName = user?.name || user?.username || 'Usuário';
+  const tr = t || getT('pt');
+  const userName = user?.name || user?.username || tr.genericUserName;
 
   const { thread } = useMemo(() => getOrCreateThread(state, { channel, userEmail, userName }), [state, channel, userEmail, userName]);
 
@@ -66,7 +68,7 @@ export default function SupportModal({ isOpen, channel, channelName, isOnline, q
       const next2 = addMessage(saved1, {
         threadId: thread.id,
         from: 'admin',
-        text: 'Ticket criado. Nosso time retornará assim que possível.',
+        text: tr.supportTicketCreated,
       });
       const saved2 = saveSupportState(next2);
       setState(saved2);
@@ -83,22 +85,22 @@ export default function SupportModal({ isOpen, channel, channelName, isOnline, q
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(980px,92vw)] h-[min(760px,88vh)] bg-white rounded-2xl shadow-2xl overflow-hidden border border-[#8A2BE2]">
         <div className="bg-[#1A1A1A] text-white border-b border-[#8A2BE2] px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-gray-300">Atendimento</p>
+            <p className="text-xs text-gray-300">{tr.supportService}</p>
             <h3 className="text-lg font-black truncate">{channelName}</h3>
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-xs font-bold px-3 py-1 rounded-full ${isOnline ? 'bg-green-500/20 text-green-200' : 'bg-yellow-500/20 text-yellow-200'}`}>
-              {isOnline ? 'Online' : 'Offline'}
+              {isOnline ? tr.supportOnline : tr.supportOffline}
             </span>
             {Number(queue || 0) > 0 && (
               <span className="text-xs font-bold px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-200">
-                Fila: {queue}
+                {tr.supportQueue}: {queue}
               </span>
             )}
             <button
               onClick={close}
               className="h-10 w-10 rounded-xl border border-gray-700 hover:border-red-500 flex items-center justify-center text-gray-200 hover:text-white"
-              title="Fechar"
+              title={tr.close}
               type="button"
             >
               <X size={18} />
@@ -111,14 +113,14 @@ export default function SupportModal({ isOpen, channel, channelName, isOnline, q
             <div className="space-y-3">
               {thread.status === 'resolved' && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                  <p className="text-sm font-black text-gray-800">Ticket resolvido</p>
-                  <p className="text-xs text-gray-500 mt-1">Se você enviar uma nova mensagem, o atendimento será reaberto automaticamente.</p>
+                  <p className="text-sm font-black text-gray-800">{tr.supportResolvedTitle}</p>
+                  <p className="text-xs text-gray-500 mt-1">{tr.supportResolvedDesc}</p>
                 </div>
               )}
               {thread.messages.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center bg-white">
-                  <p className="text-lg font-black text-gray-800">Envie sua mensagem</p>
-                  <p className="text-sm text-gray-500 mt-2">Este chat fica salvo no seu dispositivo (FASE 1).</p>
+                  <p className="text-lg font-black text-gray-800">{tr.supportEmptyTitle}</p>
+                  <p className="text-sm text-gray-500 mt-2">{tr.supportEmptyDesc}</p>
                 </div>
               )}
               {thread.messages.map((m) => (
@@ -137,7 +139,7 @@ export default function SupportModal({ isOpen, channel, channelName, isOnline, q
               <input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder={isOnline ? 'Digite sua mensagem...' : 'Digite sua mensagem (gerará um ticket)...'}
+                placeholder={isOnline ? tr.supportPlaceholderOnline : tr.supportPlaceholderOffline}
                 className="flex-1 px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-[#00FF00]"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSend();
@@ -149,11 +151,11 @@ export default function SupportModal({ isOpen, channel, channelName, isOnline, q
                 className="px-5 py-3 rounded-xl bg-[#00FF00] text-black font-black hover:bg-green-400 inline-flex items-center gap-2"
               >
                 <SendIcon size={18} />
-                Enviar
+                {tr.supportSend}
               </button>
             </div>
             <p className="text-[11px] text-gray-500 mt-2">
-              {isOnline ? 'Resposta do time aparece aqui e também incrementa o sino de notificações.' : 'Offline: sua mensagem será registrada como ticket.'}
+              {isOnline ? tr.supportHintOnline : tr.supportHintOffline}
             </p>
           </div>
         </div>
