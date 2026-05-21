@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getT } from '../i18n/i18n.js';
-import { loadFaqState } from './faqStorage';
+import { fetchFaqItems } from '../supabase/faqRepo.js';
 
 export default function FaqModal({ isOpen, onClose, t, lang }) {
   const tr = t || getT(lang);
@@ -9,7 +9,16 @@ export default function FaqModal({ isOpen, onClose, t, lang }) {
 
   useEffect(() => {
     if (!isOpen) return;
-    setItems(loadFaqState().items);
+    let cancelled = false;
+    const run = async () => {
+      const res = await fetchFaqItems();
+      if (cancelled || !res.ok) return;
+      setItems(res.items);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;

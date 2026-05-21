@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
 import { Plus, Save, Trash2 } from 'lucide-react';
-import { loadFaqState, saveFaqState } from '../support/faqStorage';
+import { adminReplaceFaqItems, fetchFaqItems } from '../supabase/faqRepo.js';
 
 export default function AdminFaq() {
   const [items, setItems] = useState([]);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setItems(loadFaqState().items);
+    let cancelled = false;
+    const run = async () => {
+      const res = await fetchFaqItems();
+      if (cancelled || !res.ok) return;
+      setItems(res.items);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const updateText = (idx, field, lang, value) => {
@@ -25,10 +35,21 @@ export default function AdminFaq() {
     setItems((s) => s.filter((_, i) => i !== idx));
   };
 
-  const save = () => {
-    const normalized = saveFaqState({ items });
-    setItems(normalized.items);
-    alert('FAQ atualizado.');
+  const save = async () => {
+    if (busy) return;
+    try {
+      setBusy(true);
+      const res = await adminReplaceFaqItems(items);
+      if (!res.ok) {
+        alert(`Falha ao salvar FAQ: ${res.error || 'erro'}`);
+        return;
+      }
+      const fresh = await fetchFaqItems();
+      if (fresh.ok) setItems(fresh.items);
+      alert('FAQ atualizado.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -51,7 +72,8 @@ export default function AdminFaq() {
             <button
               type="button"
               onClick={save}
-              className="px-5 py-3 rounded-xl bg-[#00FF00] text-black font-black hover:bg-green-400 inline-flex items-center gap-2"
+              disabled={busy}
+              className="px-5 py-3 rounded-xl bg-[#00FF00] text-black font-black hover:bg-green-400 inline-flex items-center gap-2 disabled:opacity-60"
             >
               <Save size={18} />
               Salvar

@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BANK_STATUS } from './adminStorage';
 import AdminSupport from './AdminSupport';
 import AdminFaq from './AdminFaq';
+import AdminBankHistoryView from './AdminBankHistoryView';
+import AdminDailyPayoutOverridePanel from './AdminDailyPayoutOverridePanel';
+import AdminDailyPayoutMonitor from './AdminDailyPayoutMonitor';
 import { QUOTA_GLOBAL_LIMIT } from '../quota/quotaEngine';
-import AdminCycleTools from './AdminCycleTools';
-import { loadUsersState, listUsers } from '../users/usersStorage';
-import { loadOrSeedTeamForUser } from '../team/teamStorage';
-import { getCurrentRank } from '../team/teamEngine';
 import { calcElitePool, calcElitePayoutPerSlot, computeEliteBoard, ensureEliteAchievedAt, ELITE_CATEGORIES } from '../elite/eliteEngine';
 import AdminUserView from './AdminUserView';
 import AdminWalletView from './AdminWalletView';
+import { adminFinancialTotals, adminListElitePayoutBatches, adminListElitePayoutItems, adminSearchUsers } from '../supabase/adminRepo.js';
 
 const statusOptions = [
   { value: BANK_STATUS.active, label: 'Ativa' },
@@ -31,6 +31,72 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
   const [tab, setTab] = useState('banks');
   const [eliteQualifiedOnly, setEliteQualifiedOnly] = useState(true);
   const [eliteRecalcTick, setEliteRecalcTick] = useState(0);
+  const [users, setUsers] = useState([]);
+  const [serverTotals, setServerTotals] = useState(null);
+  const [eliteBatches, setEliteBatches] = useState([]);
+  const [selectedBatchId, setSelectedBatchId] = useState(null);
+  const [selectedBatchItems, setSelectedBatchItems] = useState([]);
+  const [eliteProcessBusy, setEliteProcessBusy] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+
+  useEffect(() => {
+    setDraft(config);
+  }, [config]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const res = await adminSearchUsers({ q: '', maxRows: 200 });
+      if (!cancelled) setUsers(res.ok ? res.users : []);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [eliteRecalcTick]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const res = await adminFinancialTotals();
+      if (!cancelled) setServerTotals(res.ok ? res.totals : null);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [eliteRecalcTick]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const res = await adminListElitePayoutBatches({ maxRows: 20 });
+      if (cancelled) return;
+      const rows = res.ok ? res.rows : [];
+      setEliteBatches(rows);
+      setSelectedBatchId((current) => current || rows[0]?.id || null);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [eliteRecalcTick]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!selectedBatchId) {
+        setSelectedBatchItems([]);
+        return;
+      }
+      const res = await adminListElitePayoutItems({ batchId: selectedBatchId });
+      if (!cancelled) setSelectedBatchItems(res.ok ? res.rows : []);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBatchId, eliteRecalcTick]);
 
   const banks = useMemo(() => Object.values(draft?.banks || {}), [draft]);
   const cycle = draft?.cycle || { months: 6, renewWindowHours: 72, entryFeePct: 0.1 };
@@ -67,13 +133,9 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
   };
 
   const eliteLeaders = useMemo(() => {
-    const st = loadUsersState();
-    const users = listUsers(st);
     const usersWithRank = users.map((u) => {
       const email = String(u?.email || '').toLowerCase();
-      const seed = u?.username || email || 'user';
-      const teamEntry = email ? loadOrSeedTeamForUser(email, seed) : null;
-      const rankKey = getCurrentRank(teamEntry?.team).current.key;
+      const rankKey = String(u?.rankKey || 'FERRO').toUpperCase();
       const at = u?.createdAt || u?.updatedAt || new Date().toISOString();
       const withElite = ensureEliteAchievedAt(u, rankKey, at);
       return { ...withElite, email, rankKey, username: withElite?.username || u?.username || email };
@@ -97,14 +159,13 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
       });
     const board = computeEliteBoard(usersWithRank);
     return { usersCount: users.length, allUsers, qualifiedUsers, board };
-  }, [elite.fortnightProfitUsd, elite.lastPaidAt, eliteRecalcTick]);
+  }, [elite.fortnightProfitUsd, elite.lastPaidAt, eliteRecalcTick, users]);
 
   const totals = useMemo(() => {
     const safe = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? n : 0;
     };
-    const users = listUsers(loadUsersState());
 
     const sumHoldings = (key) => users.reduce((acc, u) => acc + safe(u?.holdings?.[key] || 0), 0);
     const cota10Units = sumHoldings('cota10');
@@ -117,44 +178,24 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
 
     const totalInvested = users.reduce((acc, u) => acc + safe(u?.balances?.invested || 0), 0);
 
-    const sumPaid = ({ kind, predicate }) =>
-      users.reduce((acc, u) => {
-        const txs = Array.isArray(u?.transactions) ? u.transactions : [];
-        return (
-          acc +
-          txs.reduce((a, tx) => {
-            const amount = safe(tx?.amount || 0);
-            if (amount <= 0) return a;
-            const k = String(tx?.kind || '');
-            if (kind && k === kind) return a + amount;
-            const type = String(tx?.type || '');
-            return predicate ? (predicate(type) ? a + amount : a) : a;
-          }, 0)
-        );
-      }, 0);
-
-    const totalPaidResidual = sumPaid({ kind: 'RESIDUAL', predicate: (t) => t.startsWith('Residual diário') });
-    const totalPaidBonus = sumPaid({ kind: 'ELITE', predicate: (t) => t.startsWith('Bolsão Elite') || t.toLowerCase().includes('bônus') });
-    const totalPaidTe = sumPaid({ kind: 'TE', predicate: (t) => t.startsWith('Ganho de Rede') || t.toLowerCase().includes('taxa de entrada') || t.includes('TE') });
-
     return {
       usersCount: users.length,
       totalInvested,
       totalRm10,
       totalRm50,
       totalRm100,
-      totalPaidResidual,
-      totalPaidBonus,
-      totalPaidTe,
+      totalPaidResidual: safe(serverTotals?.totalPaidResidual || 0),
+      totalPaidBonus: safe(serverTotals?.totalPaidBonus || 0),
+      totalPaidTe: safe(serverTotals?.totalPaidTe || 0),
     };
-  }, [eliteRecalcTick]);
+  }, [eliteRecalcTick, serverTotals, users]);
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
       <div className="bg-[#1A1A1A] rounded-2xl p-6 border border-[#8A2BE2] text-white">
         <p className="text-xs font-bold tracking-widest text-[#00FF00]">PAINEL ADMIN</p>
         <h2 className="text-2xl font-black mt-2">Gestão do Sistema</h2>
-        <p className="text-sm text-gray-300 mt-2">Controle de bancas e atendimento (via localStorage).</p>
+        <p className="text-sm text-gray-300 mt-2">Controle de bancas e atendimento (via Supabase).</p>
 
         <div className="mt-5 flex flex-wrap gap-2">
           <button
@@ -177,6 +218,13 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
             className={`px-4 py-2 rounded-xl text-sm font-black border ${tab === 'wallet' ? 'bg-[#00FF00] text-black border-[#00FF00]' : 'bg-white/5 text-white border-gray-700 hover:border-[#00FF00]'}`}
           >
             Carteira
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('monitor')}
+            className={`px-4 py-2 rounded-xl text-sm font-black border ${tab === 'monitor' ? 'bg-[#00FF00] text-black border-[#00FF00]' : 'bg-white/5 text-white border-gray-700 hover:border-[#00FF00]'}`}
+          >
+            Monitor
           </button>
           <button
             type="button"
@@ -205,6 +253,9 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
               </div>
               <p className="text-xs text-gray-500">Usuários: <span className="font-black text-gray-800">{totals.usersCount}</span></p>
             </div>
+            {totals.usersCount === 0 && (
+              <p className="mt-3 text-sm text-gray-500">Nenhum usuário cadastrado ainda. Os cards abaixo ficam vazios até entrarem dados reais no Supabase.</p>
+            )}
 
             <div className="mt-5 grid grid-cols-1 min-[540px]:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-gray-50 rounded-2xl border border-gray-100 p-5">
@@ -324,6 +375,8 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
             </div>
           </div>
 
+          <AdminDailyPayoutOverridePanel banks={banks} />
+
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <h3 className="text-lg font-black text-gray-800">Bolsão Elite (quinzenal)</h3>
             <p className="text-sm text-gray-500 mt-1">Você informa o lucro quinzenal total (USD). O sistema usa 10% como base do Bolsão Elite.</p>
@@ -351,19 +404,28 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
               </div>
             </div>
             {elite.lastPaidAt && (
-              <p className="text-xs text-gray-500 mt-2">Último pagamento simulado: {new Date(elite.lastPaidAt).toLocaleString('pt-BR')}</p>
+              <p className="text-xs text-gray-500 mt-2">Último processamento registrado: {new Date(elite.lastPaidAt).toLocaleString('pt-BR')}</p>
             )}
             <div className="mt-4 flex flex-col min-[540px]:flex-row gap-3 min-[540px]:items-center min-[540px]:justify-end">
               <button
                 type="button"
                 onClick={() => {
-                  const res = onSimulateElitePayout?.();
-                  if (res) setDraft(res);
+                  if (eliteProcessBusy) return;
+                  void (async () => {
+                    try {
+                      setEliteProcessBusy(true);
+                      const res = await onSimulateElitePayout?.({ profitUsd: Number(elite.fortnightProfitUsd || 0) });
+                      if (res) setDraft(res);
+                      setEliteRecalcTick((n) => n + 1);
+                    } finally {
+                      setEliteProcessBusy(false);
+                    }
+                  })();
                 }}
-                disabled={Number(elite.fortnightProfitUsd || 0) <= 0}
-                className={`px-5 py-3 rounded-xl font-black ${Number(elite.fortnightProfitUsd || 0) > 0 ? 'bg-[#00FF00] text-black hover:bg-green-400' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                disabled={eliteProcessBusy || Number(elite.fortnightProfitUsd || 0) <= 0}
+                className={`px-5 py-3 rounded-xl font-black ${!eliteProcessBusy && Number(elite.fortnightProfitUsd || 0) > 0 ? 'bg-[#00FF00] text-black hover:bg-green-400' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
               >
-                Simular pagamento (15 dias)
+                {eliteProcessBusy ? 'Processando...' : 'Registrar pagamento (server-side)'}
               </button>
             </div>
           </div>
@@ -501,8 +563,69 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-6">
-            <AdminCycleTools />
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-black text-gray-800">Histórico de pagamentos do Bolsão</h3>
+                <p className="text-sm text-gray-500 mt-1">Lotes processados no servidor com trilha administrativa persistida.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEliteRecalcTick((n) => n + 1)}
+                className="px-4 py-2 rounded-xl border border-gray-200 text-gray-800 font-black hover:bg-gray-50"
+              >
+                Atualizar histórico
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-5 space-y-3">
+                {eliteBatches.length === 0 && <p className="text-sm text-gray-500">Nenhum lote de pagamento registrado ainda.</p>}
+                {eliteBatches.map((batch) => (
+                  <button
+                    key={batch.id}
+                    type="button"
+                    onClick={() => setSelectedBatchId(batch.id)}
+                    className={`w-full text-left rounded-2xl border px-4 py-4 ${selectedBatchId === batch.id ? 'border-[#00FF00] bg-emerald-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-gray-900 truncate">{formatDateTime(batch.run_at)}</p>
+                        <p className="text-xs text-gray-500 mt-1">Modo: {batch.mode || '—'} • Itens: {Number(batch.items_count || 0)}</p>
+                      </div>
+                      <p className="text-sm font-black text-[#00FF00]">{formatMoney(batch.total_paid_usd)}</p>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Lucro: {formatMoney(batch.profit_usd)} • Pool: {formatMoney(batch.pool_usd)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="lg:col-span-7 rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                {!selectedBatchId ? (
+                  <p className="text-sm text-gray-500">Selecione um lote para ver os beneficiados.</p>
+                ) : (
+                  <>
+                    <p className="text-sm font-black text-gray-900">Beneficiados do lote</p>
+                    <div className="mt-4 space-y-3">
+                      {selectedBatchItems.length === 0 && <p className="text-sm text-gray-500">Nenhum item encontrado para este lote.</p>}
+                      {selectedBatchItems.map((item) => (
+                        <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-gray-900 truncate">{item.username || item.email || 'Usuário'}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {item.category} • Vaga #{item.slot_no} • Entrada: {item.achieved_at ? formatDateTime(item.achieved_at) : '—'}
+                            </p>
+                          </div>
+                          <p className="text-sm font-black text-[#00FF00]">{formatMoney(item.amount_usd)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 min-[540px]:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -550,6 +673,8 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
             ))}
           </div>
 
+          <AdminBankHistoryView banks={banks} />
+
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
             <button
               onClick={() => setDraft(config)}
@@ -559,13 +684,21 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
             </button>
             <button
               onClick={() => {
-                if (!canSave) return;
-                onSave(draft);
+                if (!canSave || saveBusy) return;
+                void (async () => {
+                  try {
+                    setSaveBusy(true);
+                    const res = await onSave(draft);
+                    if (res?.ok && res?.config) setDraft(res.config);
+                  } finally {
+                    setSaveBusy(false);
+                  }
+                })();
               }}
-              disabled={!canSave}
-              className={`px-6 py-3 rounded-xl font-black ${canSave ? 'bg-[#00FF00] text-black hover:bg-green-400' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+              disabled={!canSave || saveBusy}
+              className={`px-6 py-3 rounded-xl font-black ${canSave && !saveBusy ? 'bg-[#00FF00] text-black hover:bg-green-400' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
             >
-              Salvar alterações
+              {saveBusy ? 'Salvando...' : 'Salvar alterações'}
             </button>
           </div>
         </>
@@ -578,6 +711,8 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
           onSave={(d) => onSave(d)}
         />
       )}
+
+      {tab === 'monitor' && <AdminDailyPayoutMonitor />}
 
       {tab === 'faq' && <AdminFaq />}
 

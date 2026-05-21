@@ -1,9 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getBankByQuotaKey } from './adminStorage';
-import { loadUsersState, listUsers } from '../users/usersStorage';
-import { buildReferralLevels } from '../users/referralTree';
-import { loadOrSeedTeamForUser } from '../team/teamStorage';
-import { getCurrentRank } from '../team/teamEngine';
+import { adminGetUserNetwork, adminGetUserState, adminSearchUsers } from '../supabase/adminRepo.js';
+import { getQuotaPlanPresentation } from '../quota/quotaPresentation.js';
 
 const safeNum = (v) => {
   const n = Number(v);
@@ -26,13 +24,6 @@ const pickBankForQuotaKey = (config, quotaKey) => {
   return banks.find((b) => String(b?.quotaKey || '') === String(quotaKey || '')) || null;
 };
 
-const getUserRankInfo = (u) => {
-  const email = String(u?.email || '').toLowerCase();
-  const seed = u?.username || email || 'user';
-  const teamEntry = email ? loadOrSeedTeamForUser(email, seed) : null;
-  return getCurrentRank(teamEntry?.team);
-};
-
 const sumTx = (txs, predicate) =>
   (Array.isArray(txs) ? txs : []).reduce((acc, tx) => {
     const amount = safeNum(tx?.amount || 0);
@@ -43,38 +34,92 @@ const sumTx = (txs, predicate) =>
 export default function AdminUserView({ config }) {
   const [query, setQuery] = useState('');
   const [selectedKey, setSelectedKey] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedFull, setSelectedFull] = useState(null);
+  const [networkLevels, setNetworkLevels] = useState([]);
 
-  const users = useMemo(() => listUsers(loadUsersState()), []);
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const res = await adminSearchUsers({ q: String(query || '').trim(), maxRows: 50 });
+        if (!cancelled) setUsers(res.ok ? res.users : []);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [query]);
 
   const filtered = useMemo(() => {
-    const q = String(query || '').trim().toLowerCase();
-    if (!q) return users.slice(0, 50);
-    return users
-      .filter((u) => {
-        const email = String(u?.email || '').toLowerCase();
-        const username = String(u?.username || '').toLowerCase();
-        const userId = String(u?.userId || '').toLowerCase();
-        const uuid = String(u?.uuid || u?.id || '').toLowerCase();
-        return email.includes(q) || username.includes(q) || userId.includes(q) || uuid.includes(q);
-      })
-      .slice(0, 50);
+    return users.slice(0, 50);
   }, [users, query]);
 
   const selected = useMemo(() => {
     if (!selectedKey) return null;
-    const key = String(selectedKey || '').toLowerCase();
-    return users.find((u) => String(u?.email || '').toLowerCase() === key) || null;
+    return users.find((u) => String(u?.id || '') === String(selectedKey)) || null;
   }, [users, selectedKey]);
 
-  const selectedRank = useMemo(() => (selected ? getUserRankInfo(selected) : null), [selected]);
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!selected?.id) {
+        setSelectedFull(null);
+        setNetworkLevels([]);
+        return;
+      }
+      const [stateRes, netRes] = await Promise.all([
+        adminGetUserState({ userId: selected.id, maxTransactions: 500 }),
+        adminGetUserNetwork({ rootId: selected.id, maxDepth: 5 }),
+      ]);
+      if (cancelled) return;
+      setSelectedFull(stateRes.ok ? stateRes.user : null);
+      if (!netRes.ok) {
+        setNetworkLevels([]);
+        return;
+      }
+      const rows = netRes.rows;
+      const grouped = [1, 2, 3, 4, 5].map((lvl) =>
+        rows
+          .filter((r) => Number(r?.level) === lvl)
+          .map((r) => ({
+            key: String(r?.id || `${lvl}`),
+            username: r?.username || '—',
+            email: r?.email || '—',
+            userId: r?.user_id || '—',
+            createdAt: r?.created_at || null,
+            invested: safeNum(r?.balances?.invested || 0),
+            holdings: r?.holdings || {},
+            totalCotas: safeNum(r?.holdings?.cota10 || 0) + safeNum(r?.holdings?.cota50 || 0) + safeNum(r?.holdings?.cota100 || 0),
+            planStats: {
+              cota10: { units: safeNum(r?.holdings?.cota10 || 0), lastAt: null, totalUsd: safeNum(r?.holdings?.cota10 || 0) * 10 },
+              cota50: { units: safeNum(r?.holdings?.cota50 || 0), lastAt: null, totalUsd: safeNum(r?.holdings?.cota50 || 0) * 50 },
+              cota100: { units: safeNum(r?.holdings?.cota100 || 0), lastAt: null, totalUsd: safeNum(r?.holdings?.cota100 || 0) * 100 },
+            },
+            rankTitle: String(r?.rank_key || '—').toUpperCase(),
+          }))
+      );
+      setNetworkLevels(grouped);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id]);
 
   const selectedTotals = useMemo(() => {
-    const txs = Array.isArray(selected?.transactions) ? selected.transactions : [];
-    const invested = safeNum(selected?.balances?.invested || 0);
-    const available = safeNum(selected?.balances?.available || 0);
-    const teamEarnings = safeNum(selected?.balances?.teamEarnings || 0);
-    const eliteEarnings = safeNum(selected?.balances?.eliteEarnings || 0);
-    const teEarnings = safeNum(selected?.balances?.teEarnings || 0);
+    const base = selectedFull || selected;
+    const txs = Array.isArray(base?.transactions) ? base.transactions : [];
+    const invested = safeNum(base?.balances?.invested || 0);
+    const available = safeNum(base?.balances?.available || 0);
+    const teamEarnings = safeNum(base?.balances?.teamEarnings || 0);
+    const eliteEarnings = safeNum(base?.balances?.eliteEarnings || 0);
+    const teEarnings = safeNum(base?.balances?.teEarnings || 0);
     const totalResidual = sumTx(txs, (t) => safeNum(t?.amount || 0) > 0 && String(t?.kind || '') === 'RESIDUAL');
     const totalTe = sumTx(txs, (t) => safeNum(t?.amount || 0) > 0 && String(t?.kind || '') === 'TE');
     const teLevel1 = sumTx(
@@ -108,10 +153,26 @@ export default function AdminUserView({ config }) {
       totalElite,
       totalWithdrawn,
     };
-  }, [selected]);
+  }, [selected, selectedFull]);
+
+  const selectedDailyByLot = useMemo(() => {
+    const base = selectedFull || selected;
+    const txs = Array.isArray(base?.transactions) ? base.transactions : [];
+    const map = {};
+    txs
+      .filter((tx) => String(tx?.kind || '').toUpperCase() === 'DAILY')
+      .sort((a, b) => String(b?.at || '').localeCompare(String(a?.at || '')))
+      .forEach((tx) => {
+        const lotId = String(tx?.meta?.lotId || '');
+        if (!lotId || map[lotId]) return;
+        map[lotId] = tx;
+      });
+    return map;
+  }, [selected, selectedFull]);
 
   const selectedLots = useMemo(() => {
-    const lots = Array.isArray(selected?.quotaLots) ? selected.quotaLots : [];
+    const base = selectedFull || selected;
+    const lots = Array.isArray(base?.quotaLots) ? base.quotaLots : [];
     const now = Date.now();
     return lots
       .slice()
@@ -124,58 +185,24 @@ export default function AdminUserView({ config }) {
         const progressPct =
           Number.isFinite(durationMs) && Number.isFinite(leftMs) ? Math.min(100, Math.max(0, ((durationMs - leftMs) / durationMs) * 100)) : 0;
         const bank = pickBankForQuotaKey(config, l?.planKey);
+        const latestDaily = selectedDailyByLot[String(l?.id || '')] || null;
+        const plan = getQuotaPlanPresentation({ planKey: l?.planKey, planTitle: l?.planTitle, planPrice: l?.planPrice });
         return {
           ...l,
           bankName: bank?.name || bank?.id || '—',
           leftMs,
           progressPct,
+          fixedDailyPct: plan.dailyPct,
+          latestDaily,
         };
       });
-  }, [selected, config]);
+  }, [selected, selectedFull, config, selectedDailyByLot]);
 
   const selectedNetwork = useMemo(() => {
-    if (!selected?.username) return [];
-    const st = loadUsersState();
-    const list = listUsers(st);
-    const levels = buildReferralLevels({ users: list, rootUsername: selected.username, maxDepth: 5 });
-    const PRICE_BY_PLAN = { cota10: 10, cota50: 50, cota100: 100 };
-    return levels.map((lvlUsers, i) =>
-      lvlUsers.map((u) => {
-        const rankInfo = getUserRankInfo(u);
-        const holdings = u?.holdings || {};
-        const lots = Array.isArray(u?.quotaLots) ? u.quotaLots : [];
-        const planStats = {
-          cota10: { units: 0, lastAt: null, totalUsd: 0 },
-          cota50: { units: 0, lastAt: null, totalUsd: 0 },
-          cota100: { units: 0, lastAt: null, totalUsd: 0 },
-        };
-        lots.forEach((l) => {
-          const k = String(l?.planKey || '');
-          if (!planStats[k]) return;
-          const units = safeNum(l?.units || 0);
-          planStats[k].units += units;
-          const at = String(l?.startAt || '');
-          if (at && (!planStats[k].lastAt || String(planStats[k].lastAt) < at)) planStats[k].lastAt = at;
-        });
-        Object.keys(planStats).forEach((k) => {
-          planStats[k].totalUsd = safeNum(planStats[k].units) * safeNum(PRICE_BY_PLAN[k] || 0);
-        });
-        const totalCotas = safeNum(holdings.cota10 || 0) + safeNum(holdings.cota50 || 0) + safeNum(holdings.cota100 || 0);
-        return {
-          key: String(u?.email || `${u?.username || ''}-${i}`),
-          username: u?.username || '—',
-          email: u?.email || '—',
-          userId: u?.userId || '—',
-          createdAt: u?.createdAt || u?.updatedAt || null,
-          invested: safeNum(u?.balances?.invested || 0),
-          holdings,
-          totalCotas,
-          planStats,
-          rankTitle: rankInfo?.current?.title || '—',
-        };
-      })
-    );
-  }, [selected]);
+    return networkLevels;
+  }, [networkLevels]);
+
+  const shown = selectedFull || selected;
 
   return (
     <div className="space-y-6">
@@ -204,13 +231,13 @@ export default function AdminUserView({ config }) {
           </div>
           <div className="max-h-[560px] overflow-y-auto">
             {filtered.map((u) => {
-              const email = String(u?.email || '').toLowerCase();
-              const active = selectedKey && String(selectedKey || '').toLowerCase() === email;
+              const id = String(u?.id || '');
+              const active = selectedKey && String(selectedKey || '') === id;
               return (
                 <button
-                  key={email}
+                  key={id}
                   type="button"
-                  onClick={() => setSelectedKey(email)}
+                  onClick={() => setSelectedKey(id)}
                   className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 ${active ? 'bg-emerald-50' : ''}`}
                 >
                   <p className="text-sm font-black text-gray-900 truncate">@{u?.username || '—'}</p>
@@ -218,6 +245,7 @@ export default function AdminUserView({ config }) {
                 </button>
               );
             })}
+            {loading && <p className="p-4 text-sm text-gray-500">Carregando...</p>}
             {!filtered.length && <p className="p-4 text-sm text-gray-500">Nenhum usuário encontrado.</p>}
           </div>
         </div>
@@ -233,17 +261,17 @@ export default function AdminUserView({ config }) {
                 <div className="flex flex-col min-[540px]:flex-row min-[540px]:items-start min-[540px]:justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-xs text-gray-500">Login</p>
-                    <p className="text-xl font-black text-gray-900 truncate">@{selected?.username || '—'}</p>
-                    <p className="mt-1 text-sm text-gray-600 truncate">{selected?.email || '—'}</p>
+                    <p className="text-xl font-black text-gray-900 truncate">@{shown?.username || '—'}</p>
+                    <p className="mt-1 text-sm text-gray-600 truncate">{shown?.email || '—'}</p>
                   </div>
                   <div className="grid grid-cols-1 min-[540px]:grid-cols-2 gap-3 w-full min-[540px]:w-auto">
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
                       <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">userId</p>
-                      <p className="mt-1 text-sm font-black text-gray-900 break-all">{selected?.userId || '—'}</p>
+                      <p className="mt-1 text-sm font-black text-gray-900 break-all">{shown?.userId || '—'}</p>
                     </div>
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
                       <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Cadastro</p>
-                      <p className="mt-1 text-sm font-black text-gray-900">{selected?.createdAt ? formatDate(selected.createdAt) : '—'}</p>
+                      <p className="mt-1 text-sm font-black text-gray-900">{shown?.createdAt ? formatDate(shown.createdAt) : '—'}</p>
                     </div>
                   </div>
                 </div>
@@ -263,8 +291,7 @@ export default function AdminUserView({ config }) {
                   </div>
                   <div className="bg-gray-50 rounded-2xl border border-gray-100 p-5">
                     <p className="text-xs text-gray-500">Rank atual</p>
-                    <p className="text-xl font-black text-emerald-700">{selectedRank?.current?.title || '—'}</p>
-                    <p className="mt-1 text-xs text-gray-500">Volume: <span className="font-black text-gray-800">{formatMoney(selectedRank?.volume || 0)}</span></p>
+                    <p className="text-xl font-black text-emerald-700">{String(shown?.rankKey || '—').toUpperCase()}</p>
                   </div>
                 </div>
 
@@ -343,6 +370,36 @@ export default function AdminUserView({ config }) {
                             </p>
                           </div>
                         </div>
+
+                        <div className="mt-3 grid grid-cols-1 min-[540px]:grid-cols-3 gap-3">
+                          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Taxa fixa</p>
+                            <p className="mt-1 text-sm font-black text-gray-900">
+                              {Number(l.fixedDailyPct || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 4 })}%
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Última taxa aplicada</p>
+                            <p className="mt-1 text-sm font-black text-gray-900">
+                              {l.latestDaily
+                                ? `${Number(l.latestDaily?.meta?.effectiveDailyPct || l.fixedDailyPct || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 4 })}%`
+                                : '—'}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Último diário</p>
+                            <p className="mt-1 text-sm font-black text-gray-900">
+                              {l.latestDaily ? formatMoney(l.latestDaily?.amount || 0) : '—'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {l.latestDaily && (
+                          <p className="mt-3 text-xs text-gray-500">
+                            {l.latestDaily?.meta?.overrideApplied ? 'Exceção diária aplicada' : 'Taxa fixa aplicada'} em {formatDate(l.latestDaily?.at)} •{' '}
+                            {l.latestDaily?.meta?.bankName || l.bankName}
+                          </p>
+                        )}
 
                         <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-gray-200">
                           <div className="h-2.5 rounded-full bg-[#8A2BE2]" style={{ width: `${Number(l.progressPct || 0).toFixed(2)}%` }} />

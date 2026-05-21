@@ -1,13 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, Send as SendIcon } from 'lucide-react';
 import { getT } from '../i18n/i18n.js';
-import {
-  addMessage,
-  getOrCreateThread,
-  loadSupportState,
-  markReadForUser,
-  saveSupportState,
-} from './supportStorage';
+import { ensureMySupportThread, fetchThreadMessages, markThreadReadForUser, sendSupportMessage } from '../supabase/supportRepo.js';
 
 const formatTime = (iso) => {
   try {
@@ -20,30 +14,39 @@ const formatTime = (iso) => {
 
 export default function SupportModal({ isOpen, channel, channelName, isOnline, queue, user, onClose, t }) {
   const [text, setText] = useState('');
-  const [state, setState] = useState(() => loadSupportState());
+  const [thread, setThread] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [busy, setBusy] = useState(false);
   const listRef = useRef(null);
 
-  const userEmail = (user?.email || '').toLowerCase();
   const tr = t || getT('pt');
-  const userName = user?.name || user?.username || tr.genericUserName;
-
-  const { thread } = useMemo(() => getOrCreateThread(state, { channel, userEmail, userName }), [state, channel, userEmail, userName]);
+  const profileId = user?.id || user?.profileId;
 
   useEffect(() => {
     if (!isOpen) return;
-    const fresh = loadSupportState();
-    const updated = markReadForUser(fresh, { threadId: thread.id });
-    const saved = saveSupportState(updated);
-    setState(saved);
-    setText('');
-  }, [isOpen, thread.id]);
+    let cancelled = false;
+    const run = async () => {
+      const ensured = await ensureMySupportThread({ profileId, channel });
+      if (cancelled || !ensured.ok) return;
+      setThread(ensured.thread);
+      await markThreadReadForUser({ threadId: ensured.thread.id });
+      const msgs = await fetchThreadMessages({ threadId: ensured.thread.id });
+      if (cancelled || !msgs.ok) return;
+      setMessages(msgs.messages);
+      setText('');
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, profileId, channel]);
 
   useEffect(() => {
     if (!isOpen) return;
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [isOpen, thread.messages.length]);
+  }, [isOpen, messages.length]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -56,22 +59,21 @@ export default function SupportModal({ isOpen, channel, channelName, isOnline, q
 
   if (!isOpen) return null;
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const content = text.trim();
-    if (!content) return;
-    const next1 = addMessage(state, { threadId: thread.id, from: 'user', text: content });
-    const saved1 = saveSupportState(next1);
-    setState(saved1);
-    setText('');
-
-    if (!isOnline) {
-      const next2 = addMessage(saved1, {
-        threadId: thread.id,
-        from: 'admin',
-        text: tr.supportTicketCreated,
-      });
-      const saved2 = saveSupportState(next2);
-      setState(saved2);
+    if (!content || !thread?.id || busy) return;
+    try {
+      setBusy(true);
+      const sent = await sendSupportMessage({ threadId: thread.id, from: 'user', text: content });
+      if (!sent.ok) {
+        alert(sent.error || 'Falha ao enviar mensagem.');
+        return;
+      }
+      setText('');
+      const msgs = await fetchThreadMessages({ threadId: thread.id });
+      if (msgs.ok) setMessages(msgs.messages);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -111,19 +113,19 @@ export default function SupportModal({ isOpen, channel, channelName, isOnline, q
         <div className="h-[calc(100%-56px)] flex flex-col">
           <div ref={listRef} className="flex-1 overflow-y-auto p-4 bg-gray-50">
             <div className="space-y-3">
-              {thread.status === 'resolved' && (
+              {thread?.status === 'resolved' && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-4">
                   <p className="text-sm font-black text-gray-800">{tr.supportResolvedTitle}</p>
                   <p className="text-xs text-gray-500 mt-1">{tr.supportResolvedDesc}</p>
                 </div>
               )}
-              {thread.messages.length === 0 && (
+              {messages.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center bg-white">
                   <p className="text-lg font-black text-gray-800">{tr.supportEmptyTitle}</p>
                   <p className="text-sm text-gray-500 mt-2">{tr.supportEmptyDesc}</p>
                 </div>
               )}
-              {thread.messages.map((m) => (
+              {messages.map((m) => (
                 <div key={m.id} className={`flex ${m.from === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm border ${m.from === 'user' ? 'bg-[#00FF00]/20 border-[#00FF00]/30 text-gray-900' : 'bg-white border-gray-200 text-gray-800'}`}>
                     <p className="text-sm whitespace-pre-wrap">{m.text}</p>
@@ -148,7 +150,8 @@ export default function SupportModal({ isOpen, channel, channelName, isOnline, q
               <button
                 type="button"
                 onClick={handleSend}
-                className="px-5 py-3 rounded-xl bg-[#00FF00] text-black font-black hover:bg-green-400 inline-flex items-center gap-2"
+                className="px-5 py-3 rounded-xl bg-[#00FF00] text-black font-black hover:bg-green-400 inline-flex items-center gap-2 disabled:opacity-60"
+                disabled={busy || !thread?.id}
               >
                 <SendIcon size={18} />
                 {tr.supportSend}

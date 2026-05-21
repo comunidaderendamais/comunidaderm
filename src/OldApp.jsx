@@ -1,49 +1,58 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   User, Bell, Send, Globe, Copy, Menu, X, Home,
   PieChart, Users, Wallet, FileText, Gift, Settings,
   Eye, EyeOff, LogOut, MessageCircle, ChevronDown, Check
 } from 'lucide-react';
 import AdminView from './admin/AdminView.jsx';
-import { BANK_STATUS, getBankByQuotaKey, loadAdminConfig, saveAdminConfig } from './admin/adminStorage.js';
+import { BANK_STATUS, getBankByQuotaKey } from './admin/adminStorage.js';
 import BankHistoryModal from './history/BankHistoryModal.jsx';
 import SupportModal from './support/SupportModal.jsx';
 import FaqModal from './support/FaqModal.jsx';
-import { getUnreadCountForUser, loadSupportState } from './support/supportStorage';
+import { fetchMySupportUnreadCount } from './supabase/supportRepo.js';
 import {
   QUOTA_GLOBAL_LIMIT,
   canBuyPlan,
   createLot,
   normalizeUserCycles,
-  renewLot,
-  settleCyclesIfNeeded,
-  requestDesistance,
   calcDesistPenaltyPct,
   DESIST_ANALYSIS_HOURS,
 } from './quota/quotaEngine.js';
-import {
-  addNotification,
-  getUnreadNotificationsCount,
-  hasNotificationRef,
-  loadNotificationsState,
-  markAllRead,
-  saveNotificationsState,
-  listNotifications,
-} from './notifications/notificationsStorage.js';
-import { calcEntryFeeEarnings, calcResidual, calcRankVolume, getCurrentRank, RANKS, sumAllLevels, sumLevel } from './team/teamEngine.js';
-import { loadOrSeedTeamForUser, updateTeamForUser } from './team/teamStorage.js';
-import TeamStructureCard from './team/TeamStructureCard.jsx';
-import TeamResidualCard from './team/TeamResidualCard.jsx';
-import TeamRankCard from './team/TeamRankCard.jsx';
-import TeamNetworkLevelsCard from './team/TeamNetworkLevelsCard.jsx';
-import { formatTeamMoney, getLegTarget, getRankProgressPct, getStructureLevels, getStructureTotalBase } from './team/teamViewFormatters.js';
+import { RANKS } from './team/teamEngine.js';
+import TeamOverviewSection from './team/TeamOverviewSection.jsx';
+import { formatTeamMoney } from './team/teamViewFormatters.js';
 import ApnPdfModal from './apn/ApnPdfModal.jsx';
-import { getUserByEmail, getUserByUsername, loadUsersState, saveUsersState, upsertUser, listUsers } from './users/usersStorage.js';
-import { buildReferralLevels } from './users/referralTree.js';
-import { calcElitePool, calcElitePayoutPerSlot, computeEliteBoard, ensureEliteAchievedAt, ELITE_CATEGORIES, getEliteCategoryForRank } from './elite/eliteEngine.js';
-import { fetchNowpaymentStatus } from './payments/nowpaymentsClient.js';
-import { calcWithdrawNet, requestWithdraw, settleNowpaymentsDeposit, WITHDRAW_FEE_USD } from './payments/walletEngine.js';
+import { calcElitePool, calcElitePayoutPerSlot, computeEliteBoard, ELITE_CATEGORIES, getEliteCategoryForRank } from './elite/eliteEngine.js';
+import { createNowpaymentPayment, fetchNowpaymentStatus } from './payments/nowpaymentsClient.js';
+import { buildCheckoutUrlFromInvoiceId, getPaymentSnapshotSummary, hasHostedCheckoutAvailable, normalizeNowpaymentsPayment } from './payments/nowpaymentsPresentation.js';
+import { calcWithdrawNet, WITHDRAW_FEE_USD } from './payments/walletEngine.js';
+import NowpaymentsPaymentModal from './payments/NowpaymentsPaymentModal.jsx';
+import InfoRow from './components/ui/InfoRow.jsx';
+import StatusBadge from './components/ui/StatusBadge.jsx';
+import InlineFeedbackCard from './components/ui/InlineFeedbackCard.jsx';
+import EmptyStateCard from './components/ui/EmptyStateCard.jsx';
+import QuotaLotProgressCard from './wallet/QuotaLotProgressCard.jsx';
+import QuotaLotEarningsModal from './wallet/QuotaLotEarningsModal.jsx';
+import QuotasOverviewSection from './quota/QuotasOverviewSection.jsx';
+import QuotaPurchaseCard from './quota/QuotaPurchaseCard.jsx';
+import WalletOverviewSection from './wallet/WalletOverviewSection.jsx';
+import ReportsOverviewSection from './reports/ReportsOverviewSection.jsx';
+import HomeOverviewSection, { HomeRecentEarningsSection } from './home/HomeOverviewSection.jsx';
+import BonusOverviewSection from './bonus/BonusOverviewSection.jsx';
 import { fillTemplate, formatDateShort, formatDateTime, formatMoneyUsd, formatMoneyUsdInt, getLocaleForLang, getStatusLabel, getT, translateFinancialReason, translateNotification, translateRankTitle, translateTransactionType } from './i18n/i18n.js';
+import { getSupabaseSession, sendPasswordResetEmail, signInWithSupabase, signOutFromSupabase, signUpWithSupabase } from './supabase/auth.js';
+import { getAuthActionPageUrl } from './supabase/authRedirect.js';
+import { buildSupabaseMetadata, getSupabaseAuthErrorMessage, hydrateUserFromSupabaseAuth } from './supabase/authBridge.js';
+import { loadMyProfileAndWallets, saveMyWallets } from './supabase/profileRepo.js';
+import { getReferrerProfile, isEmailAvailable, isUsernameAvailable } from './supabase/publicLookup.js';
+import { attachNowpaymentsSnapshot, confirmMyNowpaymentsPayment, createMyPurchase, fetchMyState, renewMyLot, requestMyDesistance, requestMyWithdraw } from './supabase/stateSync.js';
+import { adminPatchAppConfig, adminUpsertBank, fetchAppConfig, fetchBanks, fetchPublicStats } from './supabase/appConfigRepo.js';
+import { fetchMyDashboard, fetchMyTeamSummary } from './supabase/dashboardRepo.js';
+import { fetchMyNotifications, markAllMyNotificationsRead } from './supabase/notificationsRepo.js';
+import { fetchEliteCandidates } from './supabase/eliteRepo.js';
+import { adminProcessElitePayout } from './supabase/adminRepo.js';
+import { getInitialLang, normalizeLang, persistLang } from './shared/lang.js';
+import { getQuotaEarningsSummary } from './quota/quotaPresentation.js';
 
 // --- THEME CONSTANTS ---
 const THEME = {
@@ -56,36 +65,52 @@ const THEME = {
   textLight: '#FFFFFF'
 };
 
-const LANG_STORAGE_KEY = 'rm_lang';
-
-const normalizeLang = (value) => {
-  const key = String(value || '').trim().toLowerCase();
-  if (!key) return 'pt';
-  if (key === 'pt' || key.startsWith('pt-')) return 'pt';
-  if (key === 'en' || key.startsWith('en-')) return 'en';
-  if (key === 'es' || key.startsWith('es-')) return 'es';
-  return 'pt';
-};
-
-const detectBrowserLang = () => {
+const stableSerialize = (value) => {
   try {
-    const raw = String(navigator?.language || navigator?.languages?.[0] || '');
-    return normalizeLang(raw);
+    return JSON.stringify(value ?? null);
   } catch {
-    return 'pt';
+    return '';
   }
 };
 
-const getInitialLang = () => {
-  try {
-    const stored = localStorage.getItem(LANG_STORAGE_KEY);
-    if (stored) return normalizeLang(stored);
-    const detected = detectBrowserLang();
-    localStorage.setItem(LANG_STORAGE_KEY, detected);
-    return detected;
-  } catch {
-    return 'pt';
-  }
+const buildAdminConfigFromSupabase = ({ config, banks }) => {
+  const cfg = config || {};
+  const cycle = cfg?.cycle || {};
+  const elite = cfg?.elite || {};
+  const support = cfg?.support || {};
+
+  const banksMap = {};
+  (Array.isArray(banks) ? banks : []).forEach((b) => {
+    const id = String(b?.id || '').trim();
+    if (!id) return;
+    banksMap[id] = {
+      id,
+      name: b?.name || id,
+      quotaKey: b?.quota_key || b?.quotaKey,
+      status: String(b?.status || 'UPCOMING').toUpperCase(),
+      limit: Number(b?.limit_usd ?? 0),
+      filledPct: Number(b?.filled_pct ?? 0),
+      profitAccumulatedPct: b?.profit_accumulated_pct == null ? 0 : Number(b.profit_accumulated_pct),
+      profitMonthPct: b?.profit_month_pct == null ? 0 : Number(b.profit_month_pct),
+    };
+  });
+
+  return {
+    cycle: {
+      months: Number(cycle?.months ?? 6),
+      renewWindowHours: Number(cycle?.renewWindowHours ?? 72),
+      entryFeePct: Number(cycle?.entryFeePct ?? 0.1),
+    },
+    elite: {
+      fortnightProfitUsd: Number(elite?.profitQuinzenal ?? elite?.fortnightProfitUsd ?? 0),
+      lastPaidAt: elite?.lastPaidAt ?? null,
+    },
+    banks: banksMap,
+    support: {
+      finance: { id: 'finance', name: 'Suporte 1 (Financeiro)', online: Boolean(support?.finance?.online), queue: Number(support?.finance?.queue ?? 0) },
+      tech: { id: 'tech', name: 'Suporte 2 (Técnico)', online: Boolean(support?.tech?.online), queue: Number(support?.tech?.queue ?? 0) },
+    },
+  };
 };
 
 const normalizeUser = (u) => {
@@ -98,7 +123,7 @@ const normalizeUser = (u) => {
       return `rm_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
     })();
   const wallets = u?.wallets ?? { usdtBep20: '', usdtTrc20: '', usdcArbitrum: '' };
-  const balances = u?.balances ?? { available: 474.5, invested: 350, teamEarnings: 124.5, eliteEarnings: 0, teEarnings: 0 };
+  const balances = u?.balances ?? { available: 0, invested: 0, teamEarnings: 0, eliteEarnings: 0, teEarnings: 0 };
   if (!Object.prototype.hasOwnProperty.call(balances, 'eliteEarnings')) balances.eliteEarnings = 0;
   if (!Object.prototype.hasOwnProperty.call(balances, 'teEarnings')) balances.teEarnings = 0;
   const holdings = u?.holdings ?? { cota10: 0, cota50: 0, cota100: 0 };
@@ -106,19 +131,58 @@ const normalizeUser = (u) => {
   return normalizeUserCycles({ ...u, userId, wallets, balances, holdings, transactions });
 };
 
+const getRefFromPath = () => {
+  try {
+    const path = String(window.location?.pathname || '');
+    const match = path.match(/\/ref\/([^/]+)/i);
+    return match && match[1] ? decodeURIComponent(match[1]).trim() : '';
+  } catch {
+    return '';
+  }
+};
+
+const buildNowpaymentsOrderId = (...parts) => {
+  const base = parts
+    .map((part) => String(part || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join('-')
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `${base || 'rm'}-${Date.now()}`;
+};
+
+const buildNowpaymentsSnapshot = (payment) => {
+  const current = normalizeNowpaymentsPayment(payment);
+  return {
+    paymentId: current.paymentId || null,
+    invoiceId: current.invoiceId || null,
+    orderId: current.orderId || null,
+    checkoutUrl: current.checkoutUrl || null,
+    qrCodeUrl: current.qrCodeUrl || null,
+    payAddress: current.payAddress || null,
+    payAmount: current.payAmount ?? null,
+    payCurrency: current.payCurrency || null,
+    paymentStatus: current.paymentStatus || null,
+    warnings: Array.isArray(current.warnings) ? current.warnings : [],
+  };
+};
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, componentStack: '', errorStack: '' };
   }
 
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error) {
+  componentDidCatch(error, errorInfo) {
     try {
-      localStorage.setItem('rm_last_error', JSON.stringify({ at: new Date().toISOString(), message: String(error?.message || error) }));
+      const errorStack = String(error?.stack || '').trim();
+      const componentStack = String(errorInfo?.componentStack || '').trim();
+      this.setState({ errorStack, componentStack });
     } catch {}
   }
 
@@ -129,6 +193,19 @@ class ErrorBoundary extends React.Component {
         <div className="max-w-xl w-full bg-black/30 border border-red-500/50 rounded-2xl p-6">
           <h2 className="text-xl font-black mb-2">Ocorreu um erro na tela</h2>
           <p className="text-sm text-gray-300 break-words">{String(this.state.error?.message || this.state.error || 'Erro desconhecido')}</p>
+          {(this.state.errorStack || this.state.componentStack) ? (
+            <details className="mt-4 rounded-xl border border-gray-700 bg-black/20 p-4">
+              <summary className="cursor-pointer text-sm font-black text-gray-200">Detalhes técnicos</summary>
+              <div className="mt-3 space-y-3">
+                {this.state.componentStack ? (
+                  <pre className="whitespace-pre-wrap break-words text-xs text-gray-300">{this.state.componentStack}</pre>
+                ) : null}
+                {this.state.errorStack ? (
+                  <pre className="whitespace-pre-wrap break-words text-xs text-gray-300">{this.state.errorStack}</pre>
+                ) : null}
+              </div>
+            </details>
+          ) : null}
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -143,9 +220,11 @@ class ErrorBoundary extends React.Component {
 }
 
 const AuthFlow = ({ onLogin, lang, setLang }) => {
-  const refUsername = String(localStorage.getItem('rm_ref_username') || '').trim();
+  const refUsername = getRefFromPath();
   const [isLogin, setIsLogin] = useState(!refUsername);
   const [showPwd, setShowPwd] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [feedback, setFeedback] = useState(null);
   const [formData, setFormData] = useState({
     name: '', username: '', country: 'Brasil', email: '', whatsapp: '', password: '', confirmPassword: ''
   });
@@ -153,45 +232,135 @@ const AuthFlow = ({ onLogin, lang, setLang }) => {
   const t = getT(lang);
 
   const handleInputChange = (e) => {
+    if (feedback) setFeedback(null);
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const showErrorFeedback = (message) => {
+    setFeedback({
+      variant: 'danger',
+      title: t.authFeedbackErrorTitle,
+      message,
+    });
+  };
+
+  const showSuccessFeedback = (title, message) => {
+    setFeedback({
+      variant: 'success',
+      title,
+      message,
+    });
+  };
+
+  const handleForgotPassword = async () => {
+    const email = String(formData.email || '').trim().toLowerCase();
+    if (!email) {
+      showErrorFeedback(t.authResetLinkMissingEmail);
+      return;
+    }
+
+    try {
+      setResetBusy(true);
+      const result = await sendPasswordResetEmail({
+        email,
+        redirectTo: getAuthActionPageUrl({ lang, flow: 'recovery' }),
+      });
+      if (!result.ok) {
+        showErrorFeedback(getSupabaseAuthErrorMessage(result.error));
+        return;
+      }
+      showSuccessFeedback(t.authResetLinkSent, t.settingsPasswordSentHint);
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (isLogin) {
-      // Simulação de login
-      const st = loadUsersState();
-      const fromRegistry = getUserByEmail(st, formData.email);
-      if (fromRegistry && String(fromRegistry.password || '') === String(formData.password || '')) {
-        onLogin(fromRegistry);
+      const email = String(formData.email || '').toLowerCase();
+      const authResult = await signInWithSupabase({
+        email,
+        password: formData.password,
+      });
+
+      if (authResult.ok && authResult?.data?.user) {
+        onLogin(
+          hydrateUserFromSupabaseAuth({
+            authUser: authResult.data.user,
+            candidateUser: formData,
+            password: formData.password,
+          })
+        );
         return;
       }
-      const storedUser = JSON.parse(localStorage.getItem('rm_user'));
-      if (storedUser && String(storedUser.email || '') === String(formData.email || '') && String(storedUser.password || '') === String(formData.password || '')) {
-        onLogin(storedUser);
-        return;
-      }
-      alert('Credenciais inválidas. Para teste, registre-se primeiro.');
+
+      showErrorFeedback(getSupabaseAuthErrorMessage(authResult.error || 'Credenciais inválidas. Para teste, registre-se primeiro.'));
     } else {
-      // Simulação de registro
       if (formData.password !== formData.confirmPassword) {
-        alert('As senhas não coincidem');
-        return;
-      }
-      const st = loadUsersState();
-      const exists = getUserByEmail(st, formData.email);
-      if (exists) {
-        alert('Este e-mail já está cadastrado. Faça login.');
-        setIsLogin(true);
+        showErrorFeedback(t.authPasswordMismatchDesc);
         return;
       }
       const desiredUsername = String(formData.username || '').trim().toLowerCase();
-      const usernameExists = listUsers(st).some((u) => String(u?.username || '').trim().toLowerCase() === desiredUsername);
-      if (desiredUsername && usernameExists) {
-        alert('Este username já está em uso. Escolha outro.');
+      const desiredEmail = String(formData.email || '').trim().toLowerCase();
+
+      const refCheck = await getReferrerProfile(refUsername || null);
+      const safeRef = refCheck.ok ? refCheck.profile?.username || null : null;
+
+      const emailCheck = await isEmailAvailable(desiredEmail);
+      if (emailCheck.ok && !emailCheck.available) {
+        showErrorFeedback(t.authEmailInUseDesc);
+        setIsLogin(true);
         return;
       }
-      onLogin({ ...formData, referrerUsername: refUsername || null });
+      if (!emailCheck.ok) {
+        showErrorFeedback(fillTemplate(t.authEmailValidationErrorTemplate, { error: emailCheck.error }));
+        return;
+      }
+
+      const userCheck = await isUsernameAvailable(desiredUsername);
+      if (userCheck.ok && !userCheck.available) {
+        showErrorFeedback(t.authUsernameInUseDesc);
+        return;
+      }
+      if (!userCheck.ok) {
+        showErrorFeedback(fillTemplate(t.authUsernameValidationErrorTemplate, { error: userCheck.error }));
+        return;
+      }
+
+      const authResult = await signUpWithSupabase({
+        email: formData.email,
+        password: formData.password,
+        metadata: buildSupabaseMetadata(formData, safeRef),
+        emailRedirectTo: getAuthActionPageUrl({ lang, flow: 'signup' }),
+      });
+
+      if (!authResult.ok) {
+        const errorMessage = getSupabaseAuthErrorMessage(authResult.error);
+        showErrorFeedback(errorMessage);
+        if (errorMessage.includes('já está cadastrado')) setIsLogin(true);
+        return;
+      }
+
+      if (authResult?.data?.user && !authResult?.data?.session) {
+        showSuccessFeedback(t.authSignupPendingTitle, t.authSignupPendingDesc);
+        setIsLogin(true);
+        return;
+      }
+
+      if (authResult?.data?.user) {
+        onLogin(
+          hydrateUserFromSupabaseAuth({
+            authUser: authResult.data.user,
+            candidateUser: { ...formData, referrerUsername: refUsername || null },
+            password: formData.password,
+          })
+        );
+        return;
+      }
+
+      showSuccessFeedback(t.authSignupFallbackTitle, t.authSignupFallbackDesc);
+      setIsLogin(true);
     }
   };
 
@@ -221,6 +390,14 @@ const AuthFlow = ({ onLogin, lang, setLang }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {feedback ? (
+            <InlineFeedbackCard
+              variant={feedback.variant}
+              title={feedback.title}
+              message={feedback.message}
+            />
+          ) : null}
+
           {!isLogin && (
             <>
               <input type="text" name="name" placeholder={t.name} required onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00FF00]" />
@@ -252,7 +429,14 @@ const AuthFlow = ({ onLogin, lang, setLang }) => {
 
           {isLogin && (
             <div className="text-right">
-              <a href="#" className="text-sm text-[#00FF00] hover:underline">{t.forgotPassword}</a>
+              <button
+                type="button"
+                disabled={resetBusy}
+                onClick={handleForgotPassword}
+                className={`text-sm hover:underline ${resetBusy ? 'cursor-not-allowed text-gray-500' : 'text-[#00FF00]'}`}
+              >
+                {resetBusy ? t.processing : t.forgotPassword}
+              </button>
             </div>
           )}
 
@@ -263,7 +447,13 @@ const AuthFlow = ({ onLogin, lang, setLang }) => {
 
         <div className="mt-6 text-center text-gray-400">
           {isLogin ? t.noAccount : t.hasAccount}
-          <button onClick={() => setIsLogin(!isLogin)} className="ml-2 text-[#00FF00] font-bold hover:underline">
+          <button
+            onClick={() => {
+              setFeedback(null);
+              setIsLogin(!isLogin);
+            }}
+            className="ml-2 text-[#00FF00] font-bold hover:underline"
+          >
             {isLogin ? t.register : t.login}
           </button>
         </div>
@@ -352,7 +542,7 @@ const Header = ({ user, toggleSidebar, lang, userLang, setLang, setCurrentView, 
           </button>
         </div>
 
-        <div className="flex items-center space-x-4 sm:space-x-6">
+        <div className="flex items-center space-x-3 sm:space-x-6">
           {/* Language Selector */}
           <div className="hidden min-[540px]:flex gap-1 bg-gray-800 p-1 rounded-lg">
              {['pt', 'en', 'es'].map(l => (
@@ -446,6 +636,25 @@ const Header = ({ user, toggleSidebar, lang, userLang, setLang, setCurrentView, 
         </div>
       </div>
 
+      <div className="min-[540px]:hidden border-b border-gray-800 bg-[#161616] px-4 py-2">
+        <div className="flex justify-center">
+          <div className="inline-flex gap-1 rounded-xl bg-gray-800 p-1 shadow-[0_8px_24px_-18px_rgba(0,0,0,0.8)]">
+            {['pt', 'en', 'es'].map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLang(l)}
+                className={`min-w-[34px] rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase transition-colors ${
+                  userLang === l ? 'bg-[#00FF00] text-black' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Sub Header - Referral Link */}
       <div className="bg-gray-900 px-4 py-2 flex flex-col min-[540px]:flex-row items-center justify-between gap-2 border-b border-gray-800">
         <span className="text-sm text-gray-400">{t.refLink}:</span>
@@ -460,108 +669,124 @@ const Header = ({ user, toggleSidebar, lang, userLang, setLang, setCurrentView, 
   );
 };
 
-const HomeView = ({ lang, adminConfig, user, onOpenBankHistory, onOpenApn }) => {
+const HomeView = ({ lang, adminConfig, publicStats, user, teamSummary, onOpenBankHistory, onOpenApn, onOpenReports }) => {
   const t = getT(lang);
   
   const totalLimit = 100000;
-  const currentSold = adminConfig?.globalSold || 45230;
+  const currentSold = Number(publicStats?.globalSold || 0);
   const percentage = Math.min((currentSold / totalLimit) * 100, 100);
 
   const formatMoney = (v) => formatMoneyUsd(v, lang);
   
   const currentUser = normalizeUser(user);
 
+  const rankTitle = translateRankTitle(teamSummary?.rank?.title || currentUser?.rankKey || 'Ferro', t);
+  const nextRank = teamSummary?.rank?.next || null;
+  const rankDesc = nextRank
+    ? fillTemplate(t.homeRankDescTemplate, {
+        current: formatMoneyUsdInt(Number(teamSummary?.rank?.volume || 0), lang),
+        target: formatMoneyUsdInt(Number(nextRank?.target || 0), lang),
+        next: translateRankTitle(nextRank?.title || nextRank?.key || '', t),
+      })
+    : t.bonusTop;
+  const investedAmount = Number(currentUser?.balances?.invested || 0);
+  const teamEarningsAmount = Number(currentUser?.balances?.teamEarnings || 0);
+  const availableAmount = Number(currentUser?.balances?.available || 0);
+
   const cards = [
-    { title: t.invested, value: formatMoney(currentUser.balances.invested), desc: t.homeBoughtQuotasDesc, color: 'border-blue-500' },
-    { title: t.teamEarnings, value: formatMoney(currentUser.balances.teamEarnings), desc: t.homeUpToLevel5Desc, color: 'border-[#00FF00]' },
-    { title: t.totalBalance, value: formatMoney(currentUser.balances.available), desc: t.homeWithdrawAvailableDesc, color: 'border-[#8A2BE2]' },
     {
+      key: 'invested',
+      title: t.invested,
+      value: formatMoney(investedAmount),
+      desc: t.homeBoughtQuotasDesc,
+      hint: investedAmount > 0 ? t.homeMetricInvestedActiveHint : t.homeMetricInvestedEmptyHint,
+      badge: investedAmount > 0 ? t.homeMetricLiveBadge : t.homeMetricGuideBadge,
+      accentClass: 'border-sky-100 bg-sky-50 text-sky-600',
+    },
+    {
+      key: 'teamEarnings',
+      title: t.teamEarnings,
+      value: formatMoney(teamEarningsAmount),
+      desc: t.homeUpToLevel5Desc,
+      hint: teamEarningsAmount > 0 ? t.homeMetricTeamActiveHint : t.homeMetricTeamEmptyHint,
+      badge: teamEarningsAmount > 0 ? t.homeMetricLiveBadge : t.homeMetricGuideBadge,
+      accentClass: 'border-emerald-100 bg-emerald-50 text-emerald-600',
+    },
+    {
+      key: 'totalBalance',
+      title: t.totalBalance,
+      value: formatMoney(availableAmount),
+      desc: t.homeWithdrawAvailableDesc,
+      hint: availableAmount > 0 ? t.homeMetricBalanceActiveHint : t.homeMetricBalanceEmptyHint,
+      badge: availableAmount > 0 ? t.homeMetricLiveBadge : t.homeMetricGuideBadge,
+      accentClass: 'border-violet-100 bg-violet-50 text-violet-600',
+    },
+    {
+      key: 'rank',
       title: t.rank,
-      value: 'BRONZE',
-      desc: fillTemplate(t.homeRankDescTemplate, { current: '$2,100', target: '$5,000', next: 'Silver' }),
-      color: 'border-yellow-500',
+      value: rankTitle,
+      desc: t.homeMetricRankDesc,
+      hint: nextRank ? rankDesc : t.homeMetricRankHint,
+      badge: nextRank ? t.homeMetricLiveBadge : t.homeMetricGuideBadge,
+      accentClass: 'border-amber-100 bg-amber-50 text-amber-600',
     },
   ];
 
+  const recentEarnings = (Array.isArray(currentUser.transactions) ? currentUser.transactions : [])
+    .filter((tx) => Number(tx?.amount || 0) > 0)
+    .slice()
+    .sort((a, b) => String(b?.at || '').localeCompare(String(a?.at || '')))
+    .slice(0, 3);
+  const recentItems = recentEarnings.map((item) => ({
+    id: item.id,
+    title: translateTransactionType(item.type, t),
+    date: formatDateTime(item.at, lang),
+    amount: `+${formatMoneyUsd(Math.abs(Number(item.amount || 0)), lang)}`,
+  }));
+  const hasDashboardMovement =
+    investedAmount > 0 ||
+    teamEarningsAmount > 0 ||
+    availableAmount > 0 ||
+    recentItems.length > 0;
+  const handleOpenHowToJoin = () =>
+    onOpenApn?.({
+      page: 5,
+      title: `${t.apnPresentation} • ${t.apnHowToJoin}`,
+      shortcuts: [
+        { label: t.apnHowToJoin, page: 5 },
+        { label: t.apnBanks, page: 9 },
+        { label: t.apnTeam, page: 10 },
+        { label: t.apnResidual, page: 11 },
+        { label: t.apnElitePool, page: 12 },
+      ],
+    });
+  const handleOpenBankSystem = () =>
+    onOpenApn?.({
+      page: 9,
+      title: `${t.apnPresentation} • ${t.apnBanksSystem}`,
+      shortcuts: [
+        { label: t.apnHowToJoin, page: 5 },
+        { label: t.apnBanks, page: 9 },
+        { label: t.apnTeam, page: 10 },
+        { label: t.apnResidual, page: 11 },
+        { label: t.apnElitePool, page: 12 },
+      ],
+    });
+
   return (
     <div className="p-4 min-[540px]:p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Progress Bar Limit */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex justify-between items-end mb-2">
-          <div>
-            <h3 className="text-lg font-bold text-gray-800">{t.totalLimit}</h3>
-            <p className="text-sm text-gray-500">{t.homeBetaPhase}</p>
-          </div>
-          <div className="text-right">
-            <span className="text-2xl font-black text-[#8A2BE2]">{currentSold.toLocaleString()}</span>
-            <span className="text-gray-500 text-sm"> / {totalLimit.toLocaleString()}</span>
-          </div>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-          <div className="bg-gradient-to-r from-[#8A2BE2] to-[#00FF00] h-4 rounded-full transition-all duration-1000" style={{ width: `${percentage}%` }}></div>
-        </div>
-        <p className="text-right text-xs text-gray-400 mt-1">{fillTemplate(t.homeFilledTemplate, { pct: percentage.toFixed(1) })}</p>
-      </div>
-
-      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-bold text-gray-800">{t.homeProjectPresentationTitle}</h3>
-            <p className="text-sm text-gray-500">{t.homeProjectPresentationDesc}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                onOpenApn?.({
-                  page: 5,
-                  title: `${t.apnPresentation} • ${t.apnHowToJoin}`,
-                  shortcuts: [
-                    { label: t.apnHowToJoin, page: 5 },
-                    { label: t.apnBanks, page: 9 },
-                    { label: t.apnTeam, page: 10 },
-                    { label: t.apnResidual, page: 11 },
-                    { label: t.apnElitePool, page: 12 },
-                  ],
-                })
-              }
-              className="px-4 py-2 rounded-xl bg-[#00FF00] text-black font-black"
-            >
-              {t.homeHowToJoinPdf}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                onOpenApn?.({
-                  page: 9,
-                  title: `${t.apnPresentation} • ${t.apnBanksSystem}`,
-                  shortcuts: [
-                    { label: t.apnHowToJoin, page: 5 },
-                    { label: t.apnBanks, page: 9 },
-                    { label: t.apnTeam, page: 10 },
-                    { label: t.apnResidual, page: 11 },
-                    { label: t.apnElitePool, page: 12 },
-                  ],
-                })
-              }
-              className="px-4 py-2 rounded-xl border border-gray-200 text-gray-800 font-black hover:bg-gray-50"
-            >
-              {t.homeBankSystemPdf}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 min-[540px]:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map((card, i) => (
-          <div key={i} className={`bg-white rounded-xl p-5 shadow-sm border-l-4 ${card.color}`}>
-            <h4 className="text-gray-500 text-sm font-medium mb-1">{card.title}</h4>
-            <p className="text-2xl font-bold text-gray-800 mb-1">{card.value}</p>
-            <p className="text-xs text-gray-400">{card.desc}</p>
-          </div>
-        ))}
-      </div>
+      <HomeOverviewSection
+        t={t}
+        totalLimit={totalLimit}
+        currentSold={currentSold}
+        percentage={percentage}
+        hasMovement={hasDashboardMovement}
+        rankTitle={rankTitle}
+        rankDesc={rankDesc}
+        cards={cards}
+        onOpenHowToJoin={handleOpenHowToJoin}
+        onOpenBankSystem={handleOpenBankSystem}
+      />
 
       {/* Forex Operations Showcase (Simulation) */}
       <div className="bg-[#1A1A1A] rounded-2xl p-6 text-white border border-[#8A2BE2]">
@@ -623,31 +848,17 @@ const HomeView = ({ lang, adminConfig, user, onOpenBankHistory, onOpenApn }) => 
         </div>
       </div>
 
-       {/* Daily Reports Summary */}
-       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">{t.homeLastDailyEarningsTitle}</h3>
-        <div className="space-y-3">
-          {[
-            { date: '12 Maio, 18:00', amount: '+$3.50', desc: t.homeQuotaEarning },
-            { date: '11 Maio, 18:00', amount: '+$3.50', desc: t.homeQuotaEarning },
-            { date: '10 Maio, 18:00', amount: '+$3.50', desc: t.homeQuotaEarning },
-          ].map((item, i) => (
-            <div key={i} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
-              <div>
-                <p className="text-sm font-medium text-gray-800">{item.desc}</p>
-                <p className="text-xs text-gray-400">{item.date}</p>
-              </div>
-              <span className="font-bold text-[#00FF00]">{item.amount}</span>
-            </div>
-          ))}
-        </div>
-        <button className="w-full mt-4 py-2 text-sm text-[#8A2BE2] font-medium hover:underline">{t.homeViewFullReport}</button>
-      </div>
+      <HomeRecentEarningsSection
+        t={t}
+        recentItems={recentItems}
+        onOpenReports={onOpenReports}
+      />
     </div>
   );
 };
 
-const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, lang }) => {
+const QuotasView = ({ user, setUser, adminConfig, publicStats, onBuy, onOpenApn, lang }) => {
+  const currentUser = normalizeUser(user);
   const t = getT(lang);
   const locale = getLocaleForLang(lang);
   const formatPct = (value) => {
@@ -664,16 +875,63 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
   const [qty, setQty] = useState({ cota10: 1, cota50: 1, cota100: 1 });
   const [coin, setCoin] = useState({ cota10: 'USDT', cota50: 'USDT', cota100: 'USDT' });
   const [network, setNetwork] = useState({ cota10: 'BEP20', cota50: 'BEP20', cota100: 'BEP20' });
+  const [paymentModal, setPaymentModal] = useState({ open: false, payment: null });
+  const [buyBusy, setBuyBusy] = useState(false);
 
   const formatMoney = (v) => formatMoneyUsd(v, lang);
   const round2 = (n) => Number(Number(n || 0).toFixed(2));
+  const sold = Number(publicStats?.globalSold || 0);
+  const remainingGlobalQuotas = Math.max(0, QUOTA_GLOBAL_LIMIT - sold);
+  const totalHoldings = plans.reduce((acc, plan) => acc + Number(currentUser?.holdings?.[plan.key] || 0), 0);
+  const purchaseTransactions = (Array.isArray(user?.transactions) ? user.transactions : []).filter(
+    (tx) => String(tx?.kind || '') === 'COMPRA' || String(tx?.type || '').startsWith('Compra ')
+  );
+  const hasQuotaMovement =
+    totalHoldings > 0 ||
+    purchaseTransactions.length > 0 ||
+    Number(currentUser?.balances?.available || 0) > 0;
+  const soldSummary = `${sold.toLocaleString(locale)} / ${QUOTA_GLOBAL_LIMIT.toLocaleString(locale)}`;
+  const availableGlobalSummary = remainingGlobalQuotas.toLocaleString(locale);
+  const holdingsSummary = totalHoldings.toLocaleString(locale);
+  const openHowToJoinPdf = () =>
+    onOpenApn?.({
+      page: 5,
+      title: `${t.apnPresentation} • ${t.apnHowToJoin}`,
+      shortcuts: [
+        { label: t.apnHowToJoin, page: 5 },
+        { label: t.apnBanks, page: 9 },
+      ],
+    });
+  const openBanksPdf = () =>
+    onOpenApn?.({
+      page: 9,
+      title: `${t.apnPresentation} • ${t.apnBanksSystem}`,
+      shortcuts: [
+        { label: t.apnHowToJoin, page: 5 },
+        { label: t.apnBanks, page: 9 },
+      ],
+    });
 
   const persistUser = (u) => {
-    localStorage.setItem('rm_user', JSON.stringify(u));
     setUser(u);
   };
 
-  const handleBuy = (plan) => {
+  const refreshUserFromServer = async () => {
+    const fetched = await fetchMyState({ maxTransactions: 200 });
+    if (fetched.ok && fetched.state?.userPatch) {
+      persistUser(
+        normalizeUser({
+          ...currentUser,
+          ...fetched.state.userPatch,
+          transactions: fetched.state.transactions,
+        })
+      );
+    }
+  };
+
+  const handleBuy = async (plan) => {
+    if (buyBusy) return;
+    setBuyBusy(true);
     try {
       const bank = getBankByQuotaKey(adminConfig, plan.key);
       if (!bank || bank.status !== BANK_STATUS.active) {
@@ -695,11 +953,6 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
       }
 
       const total = plan.price * count;
-      const currentUser = normalizeUser(user);
-      if (currentUser?.blocked) {
-        alert(t.blockedAccountSupport);
-        return;
-      }
       const validation = canBuyPlan({
         user: currentUser,
         adminConfig,
@@ -711,204 +964,46 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
         alert(translateFinancialReason(validation.reason, t));
         return;
       }
-      const currentAvailable = Number(currentUser?.balances?.available || 0);
-
-      if (paymentCoin === 'SALDO' && currentAvailable < total) {
-        alert(t.insufficientBalanceBuy);
-        return;
-      }
-
-      const now = new Date();
-      const lot = createLot({
-        planKey: plan.key,
-        planTitle: plan.title,
-        units: count,
-        planPrice: plan.price,
-        quotasPerUnit: plan.quotas,
-        nowIso: now.toISOString(),
-        cycleMonths: adminConfig?.cycle?.months,
-        renewWindowHours: adminConfig?.cycle?.renewWindowHours,
-      });
-      const nowIso = now.toISOString();
-
+      let paymentId = null;
+      let invoiceId = null;
+      let orderId = null;
+      let nowpaymentData = null;
       if (paymentCoin !== 'SALDO') {
-        const promptId = String(
-          window.prompt(
-            t.enterDepositCodePrompt
-          ) || ''
-        ).trim();
-        const baseId = `${now.getTime()}-${plan.key}`;
-        const buyTxId = `${baseId}-buy`;
-        const depositTxId = `${baseId}-dep`;
-
-        const buyTx = {
-          id: buyTxId,
-          at: nowIso,
-          kind: 'COMPRA',
-          type: `Compra ${plan.title}`,
-          amount: -total,
-          payment: `${paymentCoin} ${paymentNetwork || ''}`.trim(),
-          status: 'Aguardando depósito',
-          meta: { depositTxId },
-        };
-
-        const depositTx = {
-          id: depositTxId,
-          at: nowIso,
-          kind: 'DEPOSITO',
-          type: `Depósito em processamento • ${plan.title}`,
-          amount: total,
-          payment: `${paymentCoin} ${paymentNetwork || ''}`.trim(),
-          status: 'Pendente',
-          meta: {
-            provider: 'NOWPAYMENTS',
-            paymentId: promptId || null,
-            currency: paymentCoin,
-            network: paymentNetwork,
-            purpose: 'PURCHASE',
-            purchaseTxId: buyTxId,
-            planKey: plan.key,
-            planTitle: plan.title,
-            planPrice: plan.price,
-            quotasPerUnit: plan.quotas,
-            units: count,
-          },
-        };
-
-        const updatedUser = {
-          ...currentUser,
-          transactions: [buyTx, depositTx, ...currentUser.transactions],
-        };
-
-        persistUser(updatedUser);
-        let usersSt = loadUsersState();
-        usersSt = upsertUser(usersSt, updatedUser);
-        saveUsersState(usersSt);
-
-        try {
-          if (onBuy) onBuy(plan.quotas * count);
-        } catch (err) {}
-
-        onNotify?.({
-          kind: 'BUY',
-          title: t.pendingPurchaseTitle,
-          message: `${plan.title} x${count} ${t.pendingPurchaseMessage}`,
-          at: buyTx.at,
-          ref: buyTx.id,
+        orderId = buildNowpaymentsOrderId('purchase', currentUser?.id || currentUser?.userId, plan.key, count);
+        const paymentRes = await createNowpaymentPayment({
+          amountUsd: total,
+          asset: paymentCoin,
+          network: paymentNetwork,
+          orderId,
+          orderDescription: `${plan.title} x${count}`,
         });
-        alert(t.pendingPurchaseAlert);
-        return;
+        if (!paymentRes.ok) {
+          alert(`${t.buyProcessingError} ${String(paymentRes.reason || 'Falha ao criar cobrança.')}`);
+          return;
+        }
+        paymentId = String(paymentRes.data?.paymentId || '').trim();
+        invoiceId = String(paymentRes.data?.invoiceId || '').trim();
+        orderId = String(paymentRes.data?.orderId || orderId || '').trim();
+        if (!paymentId && !invoiceId && !orderId) {
+          alert(`${t.buyProcessingError} referência de cobrança ausente.`);
+          return;
+        }
+        nowpaymentData = paymentRes.data || null;
       }
 
-      const nextBalances = { ...currentUser.balances };
-      nextBalances.available = Number((currentAvailable - total).toFixed(2));
-      nextBalances.invested = Number((Number(nextBalances.invested || 0) + total).toFixed(2));
-
-      const nextHoldings = { ...currentUser.holdings };
-      nextHoldings[plan.key] = Number(nextHoldings[plan.key] || 0) + count;
-
-      const tx = {
-        id: `${now.getTime()}-${plan.key}`,
-        at: nowIso,
-        kind: 'COMPRA',
-        type: `Compra ${plan.title}`,
-        amount: -total,
-        payment: 'SALDO',
-        status: 'Concluído',
-      };
-
-      const updatedUser = {
-        ...currentUser,
-        balances: nextBalances,
-        holdings: nextHoldings,
-        quotaLots: [lot, ...(Array.isArray(currentUser.quotaLots) ? currentUser.quotaLots : [])],
-        transactions: [tx, ...currentUser.transactions],
-      };
-
-      persistUser(updatedUser);
-
-      let usersSt = loadUsersState();
-      usersSt = upsertUser(usersSt, updatedUser);
-
-      {
-        const adminEmail = 'rmadmin@gmail.com';
-        let notifSt = loadNotificationsState();
-
-        const ensureRecipient = (emailToEnsure) => {
-          const key = String(emailToEnsure || '').toLowerCase();
-          let existing = getUserByEmail(usersSt, key);
-          if (existing) return existing;
-          if (key !== adminEmail) return null;
-          const seededAdmin = normalizeUser({
-            email: adminEmail,
-            username: 'rmadmin',
-            name: 'Admin',
-            createdAt: nowIso,
-            balances: { available: 0, invested: 0, teamEarnings: 0, eliteEarnings: 0, teEarnings: 0 },
-            holdings: { cota10: 0, cota50: 0, cota100: 0 },
-            transactions: [],
-          });
-          usersSt = upsertUser(usersSt, seededAdmin);
-          return seededAdmin;
-        };
-
-        const buyerRef = String(updatedUser?.referrerUsername || '').trim();
-        const buyerUsername = String(updatedUser?.username || '').trim();
-        const buyerEmail = String(updatedUser?.email || '').toLowerCase();
-
-        const u1 = buyerRef ? getUserByUsername(usersSt, buyerRef) : null;
-        const u2 = u1?.referrerUsername ? getUserByUsername(usersSt, u1.referrerUsername) : null;
-        const u3 = u2?.referrerUsername ? getUserByUsername(usersSt, u2.referrerUsername) : null;
-
-        const recipients = [
-          { level: 1, user: u1, pct: 0.4 },
-          { level: 2, user: u2, pct: 0.2 },
-          { level: 3, user: u3, pct: 0.1 },
-        ];
-
-        const teBase = round2(total * 0.1);
-
-        recipients.forEach((r) => {
-          const amount = round2(teBase * r.pct);
-          if (!amount) return;
-          const recipientEmail = String(r?.user?.email || '').toLowerCase() || adminEmail;
-          const existing = ensureRecipient(recipientEmail);
-          if (!existing) return;
-          const normalized = normalizeUser(existing);
-          const balances = { ...(normalized.balances || {}) };
-          balances.available = round2(Number(balances.available || 0) + amount);
-          balances.teamEarnings = round2(Number(balances.teamEarnings || 0) + amount);
-          balances.teEarnings = round2(Number(balances.teEarnings || 0) + amount);
-
-          const teTx = {
-            id: `${tx.id}-te-L${r.level}-${recipientEmail}`,
-            at: nowIso,
-            kind: 'TE',
-            type: `Ganho de Rede (TE) - Nível ${r.level} - Compra ${buyerUsername || buyerEmail}`,
-            amount,
-            payment: 'SISTEMA',
-            status: 'Creditado',
-          };
-
-          const updated = { ...normalized, balances, transactions: [teTx, ...(normalized.transactions || [])] };
-          usersSt = upsertUser(usersSt, updated);
-
-          if (!hasNotificationRef(notifSt, recipientEmail, 'TE', teTx.id)) {
-            notifSt = addNotification(notifSt, recipientEmail, {
-              kind: 'TE',
-              title: 'Ganho de equipe (TE)',
-              message: `Você recebeu ${formatMoney(amount)} no nível ${r.level} (compra de ${buyerUsername || buyerEmail}).`,
-              at: nowIso,
-              ref: teTx.id,
-            });
-          }
-        });
-
-        saveUsersState(usersSt);
-        saveNotificationsState(notifSt);
-
-        const refreshed = getUserByEmail(usersSt, buyerEmail);
-        if (refreshed) persistUser(normalizeUser(refreshed));
+      const createRes = await createMyPurchase({
+        planKey: plan.key,
+        units: count,
+        paymentCurrency: paymentCoin,
+        paymentNetwork,
+        paymentId,
+        invoiceId,
+        orderId,
+        bankId: bank.id,
+      });
+      if (!createRes.ok || !createRes.data?.ok) {
+        alert(`${t.buyProcessingError} ${String(createRes.error || createRes.data?.reason || 'erro')}`);
+        return;
       }
 
       try {
@@ -917,68 +1012,44 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
         alert(`${t.buyPanelUpdateError} ${String(err?.message || err)}`);
       }
 
-      onNotify?.({
-        kind: 'BUY',
-        title: t.buyRegisteredTitle,
-        message: `${plan.title} x${count} ${t.buyRegisteredMessage}`,
-        at: tx.at,
-        ref: tx.id,
-      });
+      const mode = String(createRes.data?.mode || '').toUpperCase();
+      if (mode === 'NOWPAYMENTS') {
+        if (createRes.data?.depositId && nowpaymentData) {
+          await attachNowpaymentsSnapshot({
+            depositId: createRes.data.depositId,
+            paymentSnapshot: buildNowpaymentsSnapshot(nowpaymentData),
+          }).catch(() => null);
+        }
+        setPaymentModal({ open: true, payment: nowpaymentData });
+        void refreshUserFromServer();
+        return;
+      }
+
+      await refreshUserFromServer();
       alert(t.buySuccessWithBalance);
     } catch (err) {
       alert(`${t.buyProcessingError} ${String(err?.message || err)}`);
+    } finally {
+      setBuyBusy(false);
     }
   };
 
   return (
-    <div className="p-4 min-[540px]:p-6 max-w-7xl mx-auto">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">{t.quotasPageTitle}</h2>
-        <div className="flex flex-col lg:flex-row lg:flex-wrap gap-2 w-full lg:w-auto">
-          <button
-            type="button"
-            onClick={() =>
-              onOpenApn?.({
-                page: 5,
-                title: `${t.apnPresentation} • ${t.apnHowToJoin}`,
-                shortcuts: [
-                  { label: t.apnHowToJoin, page: 5 },
-                  { label: t.apnBanks, page: 9 },
-                ],
-              })
-            }
-            className="w-full lg:w-auto px-4 py-2 rounded-xl bg-[#00FF00] text-black font-black"
-          >
-            {t.quotasHowToJoinPdf}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              onOpenApn?.({
-                page: 9,
-                title: `${t.apnPresentation} • ${t.apnBanksSystem}`,
-                shortcuts: [
-                  { label: t.apnHowToJoin, page: 5 },
-                  { label: t.apnBanks, page: 9 },
-                ],
-              })
-            }
-            className="w-full lg:w-auto px-4 py-2 rounded-xl border border-gray-200 text-gray-800 font-black hover:bg-gray-50"
-          >
-            {t.quotasBanksPdf}
-          </button>
-        </div>
-      </div>
-      
-      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-8 rounded">
-        <p className="text-sm text-blue-700">
-          <strong>{t.quotasRuleLabel}</strong> {t.quotasRuleText}
-        </p>
-      </div>
+    <>
+      <div className="p-4 min-[540px]:p-6 max-w-7xl mx-auto">
+      <QuotasOverviewSection
+        t={t}
+        hasMovement={hasQuotaMovement}
+        soldSummary={soldSummary}
+        availableGlobalSummary={availableGlobalSummary}
+        holdingsSummary={holdingsSummary}
+        onOpenHowToJoin={openHowToJoinPdf}
+        onOpenBanks={openBanksPdf}
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {plans.map((plan) => {
-          const isDark = plan.variant === 'dark';
+          const earnings = getQuotaEarningsSummary({ planKey: plan.key, units: 1 });
           const isPopular = plan.key === 'cota50';
           const selectedCoin = coin[plan.key];
           const isSaldo = selectedCoin === 'SALDO';
@@ -987,8 +1058,6 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
           const canBuy = bankStatus === BANK_STATUS.active;
           const currentUnits = Number(user?.holdings?.[plan.key] || 0);
           const remainingUserUnits = Math.max(0, 100 - currentUnits);
-          const sold = Number(adminConfig?.globalSold || 0);
-          const remainingGlobalQuotas = Math.max(0, QUOTA_GLOBAL_LIMIT - sold);
           const remainingGlobalUnits = Math.floor(remainingGlobalQuotas / plan.quotas);
           const maxAllowed = Math.max(0, Math.min(remainingUserUnits, remainingGlobalUnits));
           const requested = Math.max(1, Number.parseInt(qty[plan.key] || 1, 10));
@@ -996,137 +1065,63 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
           const blockedByGlobal = remainingGlobalQuotas <= 0;
           const blockedByLimit = maxAllowed <= 0;
           const disabled = !canBuy || blockedByLimit;
-
-          const wrapperClass = isDark
-            ? 'bg-[#1A1A1A] rounded-2xl p-4 min-[540px]:p-6 shadow-xl border-2 border-[#00FF00] relative transform lg:-translate-y-4'
-            : 'bg-white rounded-2xl p-4 min-[540px]:p-6 shadow-md border border-gray-200 hover:border-[#00FF00] transition-all';
-
-          const titleClass = isDark ? 'text-xl font-bold text-white' : 'text-xl font-bold text-gray-800';
-          const priceClass = isDark ? 'text-4xl font-black text-[#00FF00] my-2' : 'text-4xl font-black text-[#8A2BE2] my-2';
-          const systemClass = isDark ? 'text-sm text-gray-400' : 'text-sm text-gray-500';
-          const listClass = isDark ? 'text-sm text-gray-300 mb-6 space-y-2' : 'text-sm text-gray-600 mb-6 space-y-2';
-          const qtyLabelClass = isDark ? 'text-sm text-gray-400 w-full' : 'text-sm text-gray-600 w-full';
-          const qtyInputClass = isDark ? 'w-full lg:w-24 p-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-[#00FF00] outline-none' : 'w-full lg:w-24 p-2 border rounded focus:ring-[#00FF00] outline-none';
-          const coinLabelClass = isDark ? 'text-sm text-gray-400' : 'text-sm text-gray-600';
-          const selectClass = isDark ? 'w-full p-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-[#00FF00] outline-none' : 'w-full p-2 border rounded focus:ring-[#00FF00] outline-none';
-          const subtleTextClass = isDark ? 'text-xs text-gray-400' : 'text-xs text-gray-500';
+          const actionLabel = buyBusy
+            ? t.processing
+            : !canBuy
+              ? t.quotasBtnUnavailable
+              : disabled
+                ? t.quotasBtnLimitReached
+                : isSaldo
+                  ? t.quotasBtnBuyWithBalance
+                  : t.quotasBtnBuyWithCrypto;
+          const availabilityHint = !canBuy
+            ? bankStatus === BANK_STATUS.upcoming
+              ? t.quotasHintSoon
+              : t.quotasHintClosed
+            : blockedByGlobal
+              ? t.quotasHintGlobalLimit
+              : blockedByUser
+                ? t.quotasHintUserLimit
+                : requested > maxAllowed
+                  ? fillTemplate(t.quotasHintMaxNowTemplate, { max: String(maxAllowed) })
+                  : fillTemplate(t.quotasHintYouHaveTemplate, {
+                      current: String(currentUnits),
+                      global: Number(remainingGlobalQuotas || 0).toLocaleString(getLocaleForLang(lang)),
+                    });
 
           return (
-            <div key={plan.key} className={wrapperClass}>
-              {isPopular && (
-                <div className="absolute top-0 right-0 bg-[#00FF00] text-black text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">
-                  {t.quotasPopular}
-                </div>
-              )}
-
-              <div className="text-center mb-6">
-                <h3 className={titleClass}>{plan.title}</h3>
-                <p className={priceClass}>{formatMoney(plan.price).replace('.00', '')}</p>
-                <p className={systemClass}>{plan.systemText}</p>
-              </div>
-
-              <ul className={listClass}>
-                <li className="flex items-start justify-between gap-3">
-                  <span>{t.quotasDailyReturn}</span>
-                  <span className="font-bold text-[#00FF00] text-right whitespace-nowrap">
-                    {formatPct(plan.dailyPct)}%{t.quotasPerDaySuffix}
-                  </span>
-                </li>
-                <li className="flex items-start justify-between gap-3">
-                  <span>{t.quotasMonthlyAvg}</span>
-                  <span className="font-bold text-[#00FF00] text-right whitespace-nowrap">
-                    ~{Number(plan.monthlyPct || 0).toLocaleString(locale)}%{t.quotasPerMonthSuffix}
-                  </span>
-                </li>
-                <li className="flex items-start justify-between gap-3">
-                  <span>{t.quotasEntryFee}</span>
-                  <span className="text-right whitespace-nowrap">10% ({formatMoney(plan.price * 0.1)})</span>
-                </li>
-                <li className="flex items-start justify-between gap-3">
-                  <span>{t.quotasValidity}</span>
-                  <span className="text-right whitespace-nowrap">{t.quotasValidityValue}</span>
-                </li>
-              </ul>
-
-              <div className="flex flex-col lg:flex-row lg:items-center gap-2 mb-4">
-                <label className={qtyLabelClass}>{t.quotasQuantity}</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={qty[plan.key]}
-                  onChange={(e) => setQty((s) => ({ ...s, [plan.key]: e.target.value }))}
-                  className={qtyInputClass}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 mb-5">
-                <div>
-                  <label className={`${coinLabelClass} block mb-1`}>{t.quotasPayment}</label>
-                  <select value={selectedCoin} onChange={(e) => setCoin((s) => ({ ...s, [plan.key]: e.target.value }))} className={selectClass}>
-                    <option value="USDT">USDT</option>
-                    <option value="USDC">USDC</option>
-                    <option value="SALDO">{t.quotasBalanceOption}</option>
-                  </select>
-                  {isSaldo && (
-                    <p className={`${subtleTextClass} mt-1`}>
-                      {t.quotasBalanceAvailable} <span className="font-bold">{formatMoney(user?.balances?.available)}</span>
-                    </p>
-                  )}
-                  <p className={`${subtleTextClass} mt-1`}>{t.quotasBalanceAlwaysHint}</p>
-                </div>
-
-                {!isSaldo && (
-                  <div>
-                    <label className={`${coinLabelClass} block mb-1`}>{t.quotasNetwork}</label>
-                    {selectedCoin === 'USDT' ? (
-                      <select value={network[plan.key]} onChange={(e) => setNetwork((s) => ({ ...s, [plan.key]: e.target.value }))} className={selectClass}>
-                        <option value="BEP20">BEP-20</option>
-                        <option value="TRC20">TRC-20</option>
-                      </select>
-                    ) : (
-                      <select value="ARBITRUM" disabled className={`${selectClass} opacity-70 cursor-not-allowed`}>
-                        <option value="ARBITRUM">Arbitrum</option>
-                      </select>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => handleBuy(plan)}
-                disabled={disabled}
-                className={`w-full py-3 font-bold rounded-xl transition-colors ${disabled ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#00FF00] hover:bg-green-400 text-black'} ${isDark ? 'shadow-[0_0_15px_rgba(0,255,0,0.4)]' : ''}`}
-              >
-                {!canBuy
-                  ? t.quotasBtnUnavailable
-                  : disabled
-                    ? t.quotasBtnLimitReached
-                    : isSaldo
-                      ? t.quotasBtnBuyWithBalance
-                      : t.quotasBtnBuyWithCrypto}
-              </button>
-              <p className={`mt-3 text-center text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {!canBuy
-                  ? bankStatus === BANK_STATUS.upcoming
-                    ? t.quotasHintSoon
-                    : t.quotasHintClosed
-                  : blockedByGlobal
-                    ? t.quotasHintGlobalLimit
-                    : blockedByUser
-                      ? t.quotasHintUserLimit
-                      : requested > maxAllowed
-                        ? fillTemplate(t.quotasHintMaxNowTemplate, { max: String(maxAllowed) })
-                        : fillTemplate(t.quotasHintYouHaveTemplate, {
-                            current: String(currentUnits),
-                            global: Number(remainingGlobalQuotas || 0).toLocaleString(getLocaleForLang(lang)),
-                          })}
-              </p>
-            </div>
+            <QuotaPurchaseCard
+              key={plan.key}
+              t={t}
+              plan={plan}
+              locale={locale}
+              earnings={earnings}
+              isPopular={isPopular}
+              canBuy={canBuy}
+              disabled={disabled}
+              buyBusy={buyBusy}
+              maxAllowed={maxAllowed}
+              currentUnits={currentUnits}
+              remainingGlobalQuotas={remainingGlobalQuotas}
+              qtyValue={qty[plan.key]}
+              selectedCoin={selectedCoin}
+              networkValue={network[plan.key]}
+              onQtyChange={(value) => setQty((s) => ({ ...s, [plan.key]: value }))}
+              onCoinChange={(value) => setCoin((s) => ({ ...s, [plan.key]: value }))}
+              onNetworkChange={(value) => setNetwork((s) => ({ ...s, [plan.key]: value }))}
+              onBuy={() => handleBuy(plan)}
+              formatMoney={formatMoney}
+              formatMoneyUsd={(value) => formatMoneyUsd(value, lang)}
+              formatPct={formatPct}
+              balanceAvailableText={formatMoney(user?.balances?.available)}
+              actionLabel={actionLabel}
+              availabilityHint={availabilityHint}
+            />
           );
         })}
       </div>
 
-      <div className="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="mt-8 bg-white rounded-[28px] shadow-[0_24px_70px_-40px_rgba(15,23,42,0.22)] border border-gray-200 overflow-hidden">
         <div className="p-6 border-b border-gray-100">
           <h3 className="text-lg font-bold text-gray-800">{t.quotasHistoryTitle}</h3>
           <p className="text-sm text-gray-500 mt-1">{t.quotasHistorySubtitle}</p>
@@ -1143,8 +1138,7 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
               </tr>
             </thead>
             <tbody className="text-sm text-gray-700">
-              {(Array.isArray(user?.transactions) ? user.transactions : [])
-                .filter((t) => String(t?.kind || '') === 'COMPRA' || String(t?.type || '').startsWith('Compra '))
+              {purchaseTransactions
                 .slice(0, 25)
                 .map((tx) => (
                   <tr key={tx.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
@@ -1152,17 +1146,21 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
                     <td className="p-4">{translateTransactionType(tx.type, t)}</td>
                     <td className="p-4">{tx.payment || '—'}</td>
                     <td className="p-4">
-                      <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold">{getStatusLabel(tx.status, t)}</span>
+                      <StatusBadge className="rounded text-xs px-2 py-1 font-bold">{getStatusLabel(tx.status, t)}</StatusBadge>
                     </td>
                     <td className="p-4 text-right font-bold">{formatMoneyUsd(tx.amount, lang)}</td>
                   </tr>
                 ))}
-              {(Array.isArray(user?.transactions) ? user.transactions : []).filter(
-                (t) => String(t?.kind || '') === 'COMPRA' || String(t?.type || '').startsWith('Compra ')
-              ).length === 0 && (
+              {purchaseTransactions.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-6 text-sm text-gray-500">
-                    {t.quotasNoPurchasesYet}
+                  <td colSpan={5} className="px-6 py-10">
+                    <div className="mx-auto max-w-xl">
+                      <EmptyStateCard
+                        icon={PieChart}
+                        title={t.quotasHistoryEmptyTitle}
+                        description={t.quotasHistoryEmptyDesc}
+                      />
+                    </div>
                   </td>
                 </tr>
               )}
@@ -1171,23 +1169,70 @@ const QuotasView = ({ user, setUser, adminConfig, onBuy, onNotify, onOpenApn, la
         </div>
       </div>
       
-      <div className="mt-8 text-center text-sm text-gray-500">
-        {t.quotasActivationHint}
+        <div className="mt-8 text-center text-sm text-gray-500">
+          {t.quotasActivationHint}
+        </div>
       </div>
-    </div>
+      <NowpaymentsPaymentModal
+        isOpen={paymentModal.open}
+        payment={paymentModal.payment}
+        onClose={() => setPaymentModal({ open: false, payment: null })}
+      />
+    </>
   );
 };
 
 const SettingsView = ({ user, setUser, lang }) => {
   const t = getT(lang);
   const [wallets, setWallets] = useState(user.wallets || { usdtBep20: '', usdtTrc20: '', usdcArbitrum: '' });
+  const [passwordResetBusy, setPasswordResetBusy] = useState(false);
+  const [passwordResetFeedback, setPasswordResetFeedback] = useState(null);
 
-  const handleSaveWallets = (e) => {
+  const handleSaveWallets = async (e) => {
     e.preventDefault();
+    const res = await saveMyWallets(wallets);
+    if (!res.ok) {
+      alert(`Falha ao salvar no Supabase: ${res.error}`);
+      return;
+    }
     const updatedUser = { ...user, wallets };
-    localStorage.setItem('rm_user', JSON.stringify(updatedUser));
     setUser(updatedUser);
     alert(t.settingsWalletsUpdatedAlert);
+  };
+
+  const handleSendPasswordLink = async () => {
+    const email = String(user?.email || '').trim().toLowerCase();
+    if (!email) {
+      setPasswordResetFeedback({
+        variant: 'danger',
+        title: t.authFeedbackErrorTitle,
+        message: t.authResetLinkMissingEmail,
+      });
+      return;
+    }
+
+    try {
+      setPasswordResetBusy(true);
+      const result = await sendPasswordResetEmail({
+        email,
+        redirectTo: getAuthActionPageUrl({ lang, flow: 'recovery' }),
+      });
+      if (!result.ok) {
+        setPasswordResetFeedback({
+          variant: 'danger',
+          title: t.authFeedbackErrorTitle,
+          message: getSupabaseAuthErrorMessage(result.error),
+        });
+        return;
+      }
+      setPasswordResetFeedback({
+        variant: 'success',
+        title: t.authResetLinkSent,
+        message: t.settingsPasswordSentHint,
+      });
+    } finally {
+      setPasswordResetBusy(false);
+    }
   };
 
   return (
@@ -1222,54 +1267,67 @@ const SettingsView = ({ user, setUser, lang }) => {
           <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
             <Settings className="text-gray-500" size={20} /> {t.settingsChangePasswordTitle}
           </h3>
-          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); alert(t.settingsTokenSentAlert); }}>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">{t.settingsCurrentPassword}</label>
-              <input type="password" placeholder="***" className="w-full p-3 bg-gray-50 border rounded-lg outline-none" />
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
+              <p className="text-sm leading-6 text-gray-600">{t.settingsPasswordHelp}</p>
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">{t.settingsNewPassword}</label>
-              <input type="password" placeholder="***" className="w-full p-3 bg-gray-50 border rounded-lg outline-none" />
+              <label className="block text-sm text-gray-600 mb-1">{t.settingsPasswordEmailLabel}</label>
+              <input
+                type="email"
+                value={String(user?.email || '')}
+                readOnly
+                className="w-full p-3 bg-gray-50 border rounded-lg outline-none text-gray-600"
+              />
             </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">{t.settingsConfirmTokenEmail}</label>
-              <div className="flex gap-2">
-                <input type="text" placeholder="000000" className="w-full p-3 bg-gray-50 border rounded-lg outline-none" />
-                <button type="button" className="px-4 bg-blue-50 text-blue-600 rounded-lg text-sm font-bold">{t.send}</button>
-              </div>
-            </div>
-            <button type="submit" className="w-full py-3 bg-[#8A2BE2] hover:bg-purple-600 text-white font-bold rounded-lg transition-colors">
-              {t.settingsUpdatePasswordBtn}
+            <button
+              type="button"
+              disabled={passwordResetBusy}
+              onClick={handleSendPasswordLink}
+              className={`w-full py-3 font-bold rounded-lg transition-colors ${passwordResetBusy ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#8A2BE2] hover:bg-purple-600 text-white'}`}
+            >
+              {passwordResetBusy ? t.processing : t.settingsPasswordSendLinkBtn}
             </button>
-          </form>
+            {passwordResetFeedback ? (
+              <InlineFeedbackCard
+                variant={passwordResetFeedback.variant}
+                title={passwordResetFeedback.title}
+                message={passwordResetFeedback.message}
+              />
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang }) => {
+const WalletView = ({ setCurrentView, user, setUser, adminConfig, lang }) => {
   const currentUser = normalizeUser(user);
   const t = getT(lang);
   const hasWallet = currentUser?.wallets?.usdtBep20 || currentUser?.wallets?.usdtTrc20 || currentUser?.wallets?.usdcArbitrum;
   const [renewModal, setRenewModal] = useState({ open: false, lotId: null });
   const [desistModal, setDesistModal] = useState({ open: false, lotId: null });
+  const [lotDetailsModal, setLotDetailsModal] = useState({ open: false, lotId: null });
   const [renewPayment, setRenewPayment] = useState('SALDO');
   const [renewNetwork, setRenewNetwork] = useState('BEP20');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawAsset, setWithdrawAsset] = useState('USDT');
   const [withdrawNetwork, setWithdrawNetwork] = useState('BEP20');
-  const [depositEdits, setDepositEdits] = useState({});
+  const [paymentModal, setPaymentModal] = useState({ open: false, payment: null });
   const [verifyBusy, setVerifyBusy] = useState(false);
+  const [reopenBusyId, setReopenBusyId] = useState(null);
 
   const persistUser = (u) => {
-    localStorage.setItem('rm_user', JSON.stringify(u));
     setUser?.(u);
   };
 
-  const persistUsersState = (u) => {
-    const st = loadUsersState();
-    saveUsersState(upsertUser(st, u));
+  const refreshUserFromServer = async () => {
+    const fetched = await fetchMyState({ maxTransactions: 200 });
+    if (fetched.ok && fetched.state?.userPatch) {
+      const enriched = normalizeUser({ ...currentUser, ...fetched.state.userPatch, transactions: fetched.state.transactions });
+      persistUser(enriched);
+    }
   };
 
   const getWithdrawAddress = () => {
@@ -1282,17 +1340,97 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
     (t) => String(t?.kind || '') === 'DEPOSITO' && String(t?.status || '').toLowerCase() === 'pendente'
   );
 
-  const updateDepositPaymentId = (txId, paymentId) => {
-    const pid = String(paymentId || '').trim();
-    const txs = Array.isArray(currentUser?.transactions) ? currentUser.transactions : [];
-    const nextTxs = txs.map((t) =>
-      String(t?.id || '') === String(txId)
-        ? { ...t, meta: { ...(t?.meta || {}), paymentId: pid || null } }
-        : t
-    );
-    const nextUser = { ...currentUser, transactions: nextTxs };
-    persistUser(nextUser);
-    persistUsersState(nextUser);
+  const getDepositReference = (tx) => ({
+    paymentId: String(tx?.meta?.paymentId || tx?.meta?.meta?.paymentId || '').trim(),
+    invoiceId: String(tx?.meta?.invoiceId || tx?.meta?.meta?.invoiceId || '').trim(),
+    orderId: String(tx?.meta?.orderId || tx?.meta?.meta?.orderId || '').trim(),
+  });
+
+  const getDepositSnapshot = (tx) => {
+    const snapshot = tx?.meta?.nowpaymentsSnapshot || tx?.meta?.meta?.nowpaymentsSnapshot || null;
+    return snapshot && typeof snapshot === 'object' ? snapshot : null;
+  };
+
+  const getDepositSummary = (tx) => {
+    const refs = getDepositReference(tx);
+    const snapshot = getDepositSnapshot(tx);
+    return getPaymentSnapshotSummary({
+      ...(snapshot || {}),
+      paymentId: refs.paymentId || snapshot?.paymentId || '',
+      invoiceId: refs.invoiceId || snapshot?.invoiceId || '',
+      orderId: refs.orderId || snapshot?.orderId || '',
+    });
+  };
+
+  const getDepositDisplayReference = (tx) => {
+    const refs = getDepositReference(tx);
+    if (refs.paymentId) return refs.paymentId;
+    if (refs.invoiceId) return `Invoice: ${refs.invoiceId}`;
+    if (refs.orderId) return `Order: ${refs.orderId}`;
+    return 'Referencia indisponivel';
+  };
+
+  const buildPendingPaymentModalData = async (tx) => {
+    const refs = getDepositReference(tx);
+    const snapshot = getDepositSnapshot(tx);
+    let payment = normalizeNowpaymentsPayment({
+      ...(snapshot || {}),
+      paymentId: refs.paymentId || snapshot?.paymentId || '',
+      invoiceId: refs.invoiceId || snapshot?.invoiceId || '',
+      orderId: refs.orderId || snapshot?.orderId || '',
+      checkoutUrl: snapshot?.checkoutUrl || buildCheckoutUrlFromInvoiceId(refs.invoiceId || snapshot?.invoiceId || ''),
+    });
+
+    const needsRemoteHydration =
+      Boolean(refs.paymentId) &&
+      (!payment.payAddress || !payment.payAmount || !payment.payCurrency || !payment.paymentStatus);
+
+    if (needsRemoteHydration) {
+      const statusRes = await fetchNowpaymentStatus({ paymentId: refs.paymentId });
+      if (statusRes.ok && statusRes.data) {
+        payment = normalizeNowpaymentsPayment({
+          ...payment,
+          ...statusRes.data,
+          paymentId: refs.paymentId || statusRes.data?.payment_id,
+          invoiceId: refs.invoiceId || statusRes.data?.invoice_id,
+          orderId: refs.orderId || statusRes.data?.order_id,
+        });
+      }
+    }
+
+    return normalizeNowpaymentsPayment(payment);
+  };
+
+  const reopenDepositPayment = async (txId) => {
+    try {
+      if (reopenBusyId) return;
+      setReopenBusyId(String(txId || ''));
+      const txs = Array.isArray(currentUser?.transactions) ? currentUser.transactions : [];
+      const tx = txs.find((item) => String(item?.id || '') === String(txId));
+      if (!tx) {
+        alert(t.walletReopenChargeUnavailable);
+        return;
+      }
+
+      const refs = getDepositReference(tx);
+      const snapshot = getDepositSnapshot(tx);
+      if (!snapshot && !refs.paymentId && !refs.invoiceId && !refs.orderId) {
+        alert(t.walletReopenChargeUnavailable);
+        return;
+      }
+
+      const payment = await buildPendingPaymentModalData(tx);
+      if (!payment.checkoutUrl && !payment.payAddress && !payment.paymentId && !payment.invoiceId && !payment.orderId) {
+        alert(t.walletReopenChargeUnavailable);
+        return;
+      }
+
+      setPaymentModal({ open: true, payment });
+    } catch (err) {
+      alert(`${t.walletReopenChargeError} ${String(err?.message || err)}`);
+    } finally {
+      setReopenBusyId(null);
+    }
   };
 
   const verifyDeposit = async (txId) => {
@@ -1301,64 +1439,69 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
       setVerifyBusy(true);
       const txs = Array.isArray(currentUser?.transactions) ? currentUser.transactions : [];
       const tx = txs.find((t) => String(t?.id || '') === String(txId));
-      const paymentId = String(tx?.meta?.paymentId || '').trim();
-      if (!paymentId) {
+      const refs = getDepositReference(tx);
+      if (!refs.paymentId && !refs.invoiceId && !refs.orderId) {
         alert(t.depositCodeRequired);
         return;
       }
-      const res = await fetchNowpaymentStatus({ paymentId });
-      if (!res.ok) {
-        alert(`${t.depositCheckFailed} ${res.reason}`);
-        return;
+      let paymentStatus = null;
+      let rawEvent = {};
+      if (refs.paymentId) {
+        const res = await fetchNowpaymentStatus({ paymentId: refs.paymentId });
+        if (!res.ok) {
+          alert(`${t.depositCheckFailed} ${res.reason}`);
+          return;
+        }
+        paymentStatus = res.status;
+        rawEvent = res.data || {};
       }
-      const settled = settleNowpaymentsDeposit({
-        user: currentUser,
-        depositTxId: txId,
-        nowpayStatus: res.status,
-        now: new Date(),
-        cycleMonths: adminConfig?.cycle?.months,
-        renewWindowHours: adminConfig?.cycle?.renewWindowHours,
+      const confirmRes = await confirmMyNowpaymentsPayment({
+        paymentId: refs.paymentId,
+        invoiceId: refs.invoiceId,
+        orderId: refs.orderId,
+        paymentStatus,
+        rawEvent,
       });
-      if (!settled.ok) {
-        alert(settled.reason);
+      if (!confirmRes.ok) {
+        alert(`${t.depositCheckFailed} ${confirmRes.error}`);
         return;
       }
-      if (settled.updated) {
-        persistUser(settled.user);
-        persistUsersState(settled.user);
-      }
-      alert(t.checkComplete);
+      await refreshUserFromServer();
+      alert(`${t.checkComplete} (${String(paymentStatus || '').trim() || '—'})`);
     } finally {
       setVerifyBusy(false);
     }
   };
 
-  const submitWithdraw = () => {
+  const submitWithdraw = async () => {
     const addr = getWithdrawAddress();
     const amount = Number(withdrawAmount || 0);
-    const res = requestWithdraw({
-      user: currentUser,
+    const net = calcWithdrawNet({ amountUsd: amount });
+    if (currentUser?.blocked) {
+      alert(t.blockedAccountSupport);
+      return;
+    }
+    if (amount < 10) {
+      alert(translateFinancialReason('Valor mínimo para saque é $10.', t));
+      return;
+    }
+    if (!addr) {
+      alert(t.walletNoWalletConfigured);
+      return;
+    }
+    const reqRes = await requestMyWithdraw({
       amountUsd: amount,
       asset: withdrawAsset,
       network: withdrawAsset === 'USDC' ? 'ARBITRUM' : withdrawNetwork,
       address: addr,
-      now: new Date(),
     });
-    if (!res.ok) {
-      alert(translateFinancialReason(res.reason, t));
+    if (!reqRes.ok || !reqRes.data?.ok) {
+      alert(translateFinancialReason(reqRes.error || 'Falha ao solicitar saque.', t));
       return;
     }
-    persistUser(res.user);
-    persistUsersState(res.user);
-    onNotify?.({
-      kind: 'WITHDRAW',
-      title: t.withdrawRequestedTitle,
-      message: `${t.withdrawRequestedMessage} $${WITHDRAW_FEE_USD}.`,
-      at: res.tx.at,
-      ref: res.tx.id,
-    });
+    await refreshUserFromServer();
     setWithdrawAmount('');
-    alert(t.withdrawRequestedAlert);
+    alert(`${t.withdrawRequestedAlert} ${formatMoneyUsd(net.netUsd, lang)}`);
   };
 
   const reports = currentUser.transactions.map((tx, i) => ({
@@ -1370,20 +1513,6 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
     status: getStatusLabel(tx.status, t),
     color: tx.amount > 0 ? 'text-green-600' : 'text-red-500'
   }));
-
-  if (reports.length === 0) {
-    reports.push(
-      {
-        id: 1,
-        date: formatDateShort(new Date().toISOString(), lang),
-        type: translateTransactionType('Compra COTA 50', t),
-        value: formatMoneyUsd(50, lang),
-        displayValue: `-${formatMoneyUsd(50, lang)}`,
-        status: getStatusLabel('Concluído', t),
-        color: 'text-gray-500',
-      }
-    );
-  }
 
   const nowTs = Date.now();
   const lots = Array.isArray(currentUser.quotaLots) ? currentUser.quotaLots : [];
@@ -1406,141 +1535,202 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
 
   const selectedLot = renewModal.open ? lots.find((l) => l.id === renewModal.lotId) : null;
   const desistLot = desistModal.open ? lots.find((l) => l.id === desistModal.lotId) : null;
+  const lotDetails = lotDetailsModal.open ? lots.find((l) => l.id === lotDetailsModal.lotId) : null;
   const renewNetworkFinal = renewPayment === 'USDT' ? renewNetwork : renewPayment === 'USDC' ? 'ARBITRUM' : null;
+  const hasWalletMovement =
+    Boolean(hasWallet) ||
+    Number(currentUser?.balances?.available || 0) > 0 ||
+    Number(currentUser?.balances?.invested || 0) > 0 ||
+    activeLots.length > 0 ||
+    pendingDeposits.length > 0;
 
   const confirmRenew = () => {
     if (!selectedLot) return;
-    const res = renewLot({
-      user: currentUser,
-      lotId: selectedLot.id,
-      payment: renewPayment,
-      network: renewNetworkFinal,
-      cycle: adminConfig?.cycle,
-      now: new Date(),
-    });
-    if (!res.ok) {
-      alert(translateFinancialReason(res.reason, t));
-      return;
-    }
-    persistUser(res.user);
-    if (res.notification) onNotify?.(res.notification);
-    setRenewModal({ open: false, lotId: null });
-    alert(t.renewRegisteredAlert);
+    (async () => {
+      const paymentCurrency = renewPayment;
+      let paymentId = null;
+      let invoiceId = null;
+      let orderId = null;
+      let nowpaymentData = null;
+      if (paymentCurrency !== 'SALDO') {
+        orderId = buildNowpaymentsOrderId('renew', currentUser?.id || currentUser?.userId, selectedLot.id);
+        const paymentRes = await createNowpaymentPayment({
+          amountUsd: Number(selectedLot.planPrice || 0) * Number(selectedLot.units || 0),
+          asset: paymentCurrency,
+          network: renewNetworkFinal,
+          orderId,
+          orderDescription: `Renovacao ${selectedLot.planTitle} x${selectedLot.units}`,
+        });
+        if (!paymentRes.ok) {
+          alert(translateFinancialReason(paymentRes.reason || 'Falha ao criar cobrança.', t));
+          return;
+        }
+        paymentId = String(paymentRes.data?.paymentId || '').trim();
+        invoiceId = String(paymentRes.data?.invoiceId || '').trim();
+        orderId = String(paymentRes.data?.orderId || orderId || '').trim();
+        if (!paymentId && !invoiceId && !orderId) {
+          alert('Referência de cobrança ausente.');
+          return;
+        }
+        nowpaymentData = paymentRes.data || null;
+      }
+
+      const res = await renewMyLot({
+        lotId: selectedLot.id,
+        paymentCurrency,
+        paymentNetwork: renewNetworkFinal,
+        paymentId,
+        invoiceId,
+        orderId,
+      });
+      if (!res.ok || !res.data?.ok) {
+        alert(translateFinancialReason(res.error || 'Falha ao renovar.', t));
+        return;
+      }
+
+      await refreshUserFromServer();
+      setRenewModal({ open: false, lotId: null });
+      const mode = String(res.data?.mode || '').toUpperCase();
+      if (mode === 'NOWPAYMENTS') {
+        if (res.data?.depositId && nowpaymentData) {
+          await attachNowpaymentsSnapshot({
+            depositId: res.data.depositId,
+            paymentSnapshot: buildNowpaymentsSnapshot(nowpaymentData),
+          }).catch(() => null);
+          await refreshUserFromServer();
+        }
+        setPaymentModal({ open: true, payment: nowpaymentData });
+        return;
+      }
+      alert(t.renewRegisteredAlert);
+    })();
   };
 
   const confirmDesistance = () => {
     if (!desistLot) return;
-    const res = requestDesistance({ user: currentUser, adminConfig, lotId: desistLot.id, now: new Date() });
-    if (!res.ok) {
-      alert(translateFinancialReason(res.reason, t));
-      return;
-    }
-    persistUser(res.user);
-    if (res.notification) onNotify?.(res.notification);
-    setDesistModal({ open: false, lotId: null });
-    alert(`${t.desistanceRequestedAlert} ${DESIST_ANALYSIS_HOURS}h.`);
+    (async () => {
+      const res = await requestMyDesistance({ lotId: desistLot.id });
+      if (!res.ok || !res.data?.ok) {
+        alert(translateFinancialReason(res.error || 'Falha ao solicitar desistência.', t));
+        return;
+      }
+
+      await refreshUserFromServer();
+      setDesistModal({ open: false, lotId: null });
+      alert(`${t.desistanceRequestedAlert} ${DESIST_ANALYSIS_HOURS}h.`);
+    })();
   };
 
   return (
     <div className="p-4 min-[540px]:p-6 max-w-6xl mx-auto space-y-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">{t.walletTitle}</h2>
-      
-      <div className="grid grid-cols-1 min-[540px]:grid-cols-2 gap-6">
-        <div className="bg-[#1A1A1A] p-8 rounded-2xl border border-[#00FF00] text-center flex flex-col justify-center shadow-lg relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-[#00FF00] opacity-10 rounded-full blur-3xl"></div>
-          <h3 className="text-2xl font-bold text-white mb-2">{t.walletIncreaseEarningsTitle}</h3>
-          <p className="text-gray-400 mb-6">{t.walletIncreaseEarningsDesc}</p>
-          <button onClick={() => setCurrentView('quotas')} className="py-4 bg-[#00FF00] hover:bg-green-400 text-black font-bold rounded-xl text-lg transition-transform transform hover:scale-105">
-            {t.walletIncreaseEarningsCta}
-          </button>
-        </div>
+      <WalletOverviewSection
+        t={t}
+        hasMovement={hasWalletMovement}
+        availableBalance={formatMoneyUsd(currentUser.balances.available, lang)}
+        activeCyclesCount={activeLots.length}
+        pendingDepositsCount={pendingDeposits.length}
+        hasWallet={Boolean(hasWallet)}
+        onOpenQuotas={() => setCurrentView('quotas')}
+        onOpenSettings={() => setCurrentView('settings')}
+      />
 
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
-          <h3 className="text-xl font-bold text-gray-800 mb-4">{t.walletWithdrawTitle}</h3>
-          <div className="flex justify-between items-end mb-6">
-            <div>
-              <p className="text-sm text-gray-500">{t.walletWithdrawReleased}</p>
-              <p className="text-4xl font-black text-[#8A2BE2]">{formatMoneyUsd(currentUser.balances.available, lang)}</p>
+      <div className="bg-white p-8 rounded-[28px] shadow-[0_24px_70px_-40px_rgba(15,23,42,0.3)] border border-gray-200">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 className="text-xl font-black text-gray-900">{t.walletWithdrawTitle}</h3>
+            <p className="mt-1 text-sm text-gray-500">{t.walletWithdrawPanelDesc}</p>
+          </div>
+          <div className="grid grid-cols-1 min-[540px]:grid-cols-2 gap-3 lg:min-w-[320px]">
+            <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-violet-700">{t.walletWithdrawReleased}</p>
+              <p className="mt-2 text-2xl font-black text-[#8A2BE2]">{formatMoneyUsd(currentUser.balances.available, lang)}</p>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-500">{t.walletWithdrawTotalInvested}</p>
-              <p className="text-xl font-bold text-gray-700">{formatMoneyUsd(currentUser.balances.invested, lang)}</p>
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{t.walletWithdrawTotalInvested}</p>
+              <p className="mt-2 text-2xl font-black text-gray-900">{formatMoneyUsd(currentUser.balances.invested, lang)}</p>
             </div>
           </div>
+        </div>
 
-          {!hasWallet ? (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4 text-sm text-yellow-800">
-              <p>{t.walletNoWalletConfigured}</p>
-              <button onClick={() => setCurrentView('settings')} className="font-bold underline mt-1">{t.walletConfigureNow}</button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-               <div>
-                  <label className="text-sm text-gray-600 block mb-1">{t.walletWithdrawAmountLabel}</label>
-                  <input
-                    type="number"
-                    min="10"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full p-3 border rounded-lg focus:ring-[#8A2BE2] outline-none"
-                  />
-                  <div className="mt-2 grid grid-cols-1 min-[540px]:grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-sm text-gray-600 block mb-1">{t.walletCurrencyLabel}</label>
+        {!hasWallet ? (
+          <div className="mt-6 rounded-[24px] border border-dashed border-amber-200 bg-amber-50/80 px-5 py-5">
+            <p className="text-sm font-black text-amber-900">{t.walletNoWalletConfiguredTitle}</p>
+            <p className="mt-2 text-sm leading-6 text-amber-800">{t.walletNoWalletConfiguredDesc}</p>
+            <button
+              type="button"
+              onClick={() => setCurrentView('settings')}
+              className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+            >
+              {t.walletConfigureNow}
+            </button>
+          </div>
+        ) : (
+          <div className="mt-6 space-y-4">
+             <div>
+                <label className="text-sm text-gray-600 block mb-1">{t.walletWithdrawAmountLabel}</label>
+                <input
+                  type="number"
+                  min="10"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full p-3 border rounded-lg focus:ring-[#8A2BE2] outline-none"
+                />
+                <div className="mt-2 grid grid-cols-1 min-[540px]:grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-sm text-gray-600 block mb-1">{t.walletCurrencyLabel}</label>
+                    <select
+                      value={withdrawAsset}
+                      onChange={(e) => setWithdrawAsset(e.target.value)}
+                      className="w-full p-3 border rounded-lg focus:ring-[#8A2BE2] outline-none"
+                    >
+                      <option value="USDT">USDT</option>
+                      <option value="USDC">USDC</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600 block mb-1">{t.walletNetworkLabel}</label>
+                    {withdrawAsset === 'USDT' ? (
                       <select
-                        value={withdrawAsset}
-                        onChange={(e) => setWithdrawAsset(e.target.value)}
+                        value={withdrawNetwork}
+                        onChange={(e) => setWithdrawNetwork(e.target.value)}
                         className="w-full p-3 border rounded-lg focus:ring-[#8A2BE2] outline-none"
                       >
-                        <option value="USDT">USDT</option>
-                        <option value="USDC">USDC</option>
+                        <option value="BEP20">BEP-20</option>
+                        <option value="TRC20">TRC-20</option>
                       </select>
-                    </div>
-                    <div>
-                      <label className="text-sm text-gray-600 block mb-1">{t.walletNetworkLabel}</label>
-                      {withdrawAsset === 'USDT' ? (
-                        <select
-                          value={withdrawNetwork}
-                          onChange={(e) => setWithdrawNetwork(e.target.value)}
-                          className="w-full p-3 border rounded-lg focus:ring-[#8A2BE2] outline-none"
-                        >
-                          <option value="BEP20">BEP-20</option>
-                          <option value="TRC20">TRC-20</option>
-                        </select>
-                      ) : (
-                        <select disabled value="ARBITRUM" className="w-full p-3 border rounded-lg opacity-70 cursor-not-allowed">
-                          <option value="ARBITRUM">Arbitrum</option>
-                        </select>
-                      )}
-                    </div>
+                    ) : (
+                      <select disabled value="ARBITRUM" className="w-full p-3 border rounded-lg opacity-70 cursor-not-allowed">
+                        <option value="ARBITRUM">Arbitrum</option>
+                      </select>
+                    )}
                   </div>
-                  <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                    {(() => {
-                      const calc = calcWithdrawNet({ amountUsd: Number(withdrawAmount || 0) });
-                      return (
-                        <div className="flex items-center justify-between gap-4 text-sm">
-                          <p className="text-gray-600">
-                            {t.walletFeeFixedLabel} <span className="font-black text-gray-800">${WITHDRAW_FEE_USD}</span>
-                          </p>
-                          <p className="text-gray-600">
-                            {t.walletYouReceiveLabel} <span className="font-black text-gray-900">{formatMoneyUsd(calc.netUsd, lang)}</span>
-                          </p>
-                        </div>
-                      );
-                    })()}
-                  </div>
-               </div>
-               <button
-                 type="button"
-                 onClick={submitWithdraw}
-                 className="w-full py-3 bg-[#8A2BE2] hover:bg-purple-600 text-white font-bold rounded-xl transition-colors"
-               >
-                 {t.walletRequestWithdrawBtn}
-               </button>
-            </div>
-          )}
-        </div>
+                </div>
+                <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  {(() => {
+                    const calc = calcWithdrawNet({ amountUsd: Number(withdrawAmount || 0) });
+                    return (
+                      <div className="flex items-center justify-between gap-4 text-sm">
+                        <p className="text-gray-600">
+                          {t.walletFeeFixedLabel} <span className="font-black text-gray-800">${WITHDRAW_FEE_USD}</span>
+                        </p>
+                        <p className="text-gray-600">
+                          {t.walletYouReceiveLabel} <span className="font-black text-gray-900">{formatMoneyUsd(calc.netUsd, lang)}</span>
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+             </div>
+             <button
+               type="button"
+               onClick={submitWithdraw}
+               className="w-full py-3 bg-[#8A2BE2] hover:bg-purple-600 text-white font-bold rounded-xl transition-colors"
+             >
+               {t.walletRequestWithdrawBtn}
+             </button>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1550,46 +1740,88 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
         </div>
         <div className="p-6 space-y-3">
           {pendingDeposits.length === 0 ? (
-            <p className="text-sm text-gray-500">{t.noPendingDeposits}</p>
+            <EmptyStateCard
+              icon={Wallet}
+              title={t.walletPendingEmptyTitle}
+              description={t.walletPendingEmptyDesc}
+            />
           ) : (
             pendingDeposits.slice(0, 10).map((tx) => (
-              <div key={tx.id} className="border border-gray-200 rounded-xl p-4">
-                <div className="flex flex-col min-[540px]:flex-row min-[540px]:items-start min-[540px]:justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-black text-gray-800 truncate">{translateTransactionType(tx.type, t)}</p>
-                    <p className="text-xs text-gray-500 mt-1">{t.walletValueLabel}: <span className="font-black text-gray-800">{formatMoneyUsd(tx.amount, lang)}</span></p>
-                  </div>
-                  <span className="text-xs font-black px-3 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-700 whitespace-nowrap">
-                    {getStatusLabel(tx.status, t)}
-                  </span>
-                </div>
+              (() => {
+                const snapshot = getDepositSnapshot(tx);
+                const refs = getDepositReference(tx);
+                const summary = getDepositSummary(tx);
+                const canReopen = Boolean(snapshot || refs.paymentId || refs.invoiceId || refs.orderId);
+                const checkoutReady = hasHostedCheckoutAvailable({
+                  ...(snapshot || {}),
+                  invoiceId: refs.invoiceId || snapshot?.invoiceId || '',
+                });
+                const reopenBusy = String(reopenBusyId || '') === String(tx.id || '');
 
-                <div className="mt-3 grid grid-cols-1 lg:grid-cols-12 gap-3">
-                  <div className="lg:col-span-8">
-                    <label className="block text-xs font-black text-gray-600">{t.depositCode}</label>
-                    <input
-                      value={String(depositEdits[tx.id] ?? tx?.meta?.paymentId ?? '')}
-                      onChange={(e) => setDepositEdits((s) => ({ ...s, [tx.id]: e.target.value }))}
-                      placeholder={t.depositCode}
-                      className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
-                    />
+                return (
+                  <div key={tx.id} className="border border-gray-200 rounded-xl p-4">
+                    <div className="flex flex-col min-[540px]:flex-row min-[540px]:items-start min-[540px]:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-black text-gray-800 truncate">{translateTransactionType(tx.type, t)}</p>
+                        <p className="text-xs text-gray-500 mt-1">{t.walletValueLabel}: <span className="font-black text-gray-800">{formatMoneyUsd(tx.amount, lang)}</span></p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <StatusBadge variant={checkoutReady ? 'success' : 'warning'}>
+                            {checkoutReady ? t.walletHostedCheckoutAvailable : t.walletHostedCheckoutManualOnly}
+                          </StatusBadge>
+                        </div>
+                      </div>
+                      <StatusBadge>{getStatusLabel(tx.status, t)}</StatusBadge>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 lg:grid-cols-12 gap-3">
+                      <div className="lg:col-span-8">
+                        <InfoRow
+                          label={t.depositCode}
+                          value={getDepositDisplayReference(tx)}
+                          className="mt-0 rounded-xl px-4 py-3"
+                        />
+                        {summary.hasSummary ? (
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <InfoRow
+                              label={t.walletPaymentAssetLabel}
+                              value={summary.asset}
+                              className="mt-0 rounded-xl px-4 py-3"
+                            />
+                            <InfoRow
+                              label={t.walletPaymentNetworkLabel}
+                              value={summary.network}
+                              className="mt-0 rounded-xl px-4 py-3"
+                            />
+                            <InfoRow
+                              label={t.walletPaymentValueShortLabel}
+                              value={summary.value}
+                              className="mt-0 rounded-xl px-4 py-3"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="lg:col-span-4 grid grid-cols-1 gap-3">
+                        <button
+                          type="button"
+                          disabled={!canReopen || reopenBusy || verifyBusy}
+                          onClick={() => reopenDepositPayment(tx.id)}
+                          className={`w-full px-4 py-3 rounded-xl font-black ${!canReopen || reopenBusy || verifyBusy ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'border border-gray-200 bg-white text-gray-800 hover:bg-gray-50'}`}
+                        >
+                          {reopenBusy ? t.processing : checkoutReady ? t.walletOpenCheckoutBtn : t.walletViewPaymentDataBtn}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={verifyBusy || reopenBusy}
+                          onClick={() => verifyDeposit(tx.id)}
+                          className={`w-full px-4 py-3 rounded-xl font-black ${verifyBusy || reopenBusy ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#00FF00] text-black hover:bg-green-400'}`}
+                        >
+                          {t.refresh}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="lg:col-span-4 flex items-end">
-                    <button
-                      type="button"
-                      disabled={verifyBusy}
-                      onClick={() => {
-                        const v = String(depositEdits[tx.id] ?? '').trim();
-                        if (v) updateDepositPaymentId(tx.id, v);
-                        verifyDeposit(tx.id);
-                      }}
-                      className={`w-full px-4 py-3 rounded-xl font-black ${verifyBusy ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#00FF00] text-black hover:bg-green-400'}`}
-                    >
-                      {t.refresh}
-                    </button>
-                  </div>
-                </div>
-              </div>
+                );
+              })()
             ))
           )}
         </div>
@@ -1610,11 +1842,24 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
               </tr>
             </thead>
             <tbody className="text-sm text-gray-700">
-              {reports.map(rep => (
+              {reports.length === 0 ? (
+                <tr>
+                  <td className="px-6 py-10 text-center text-gray-500" colSpan="4">
+                    <div className="mx-auto max-w-xl">
+                      <EmptyStateCard
+                        icon={FileText}
+                        title={t.walletHistoryEmptyTitle}
+                        description={t.walletHistoryEmptyDesc}
+                        className="text-left"
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ) : reports.map(rep => (
                 <tr key={rep.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                   <td className="p-4 whitespace-nowrap">{rep.date}</td>
                   <td className="p-4">{rep.type}</td>
-                  <td className="p-4"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{rep.status}</span></td>
+                  <td className="p-4"><StatusBadge className="rounded text-xs px-2 py-1 font-normal">{rep.status}</StatusBadge></td>
                   <td className={`p-4 text-right font-bold ${rep.color}`}>{rep.displayValue || rep.value}</td>
                 </tr>
               ))}
@@ -1635,7 +1880,11 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
           <div>
             <p className="text-sm font-black text-gray-800 mb-3">{t.walletCancellationsInReview}</p>
             {cancelLots.length === 0 ? (
-              <p className="text-sm text-gray-500">{t.walletNoCancellationsInReview}</p>
+              <EmptyStateCard
+                icon={FileText}
+                title={t.walletReviewEmptyTitle}
+                description={t.walletReviewEmptyDesc}
+              />
             ) : (
               <div className="space-y-3">
                 {cancelLots.map((l) => (
@@ -1660,7 +1909,11 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
           <div>
             <p className="text-sm font-black text-gray-800 mb-3">{t.walletRenewalAvailable}</p>
             {maturedLots.length === 0 ? (
-              <p className="text-sm text-gray-500">{t.walletNoRenewalAvailable}</p>
+              <EmptyStateCard
+                icon={Wallet}
+                title={t.walletRenewalEmptyTitle}
+                description={t.walletRenewalEmptyDesc}
+              />
             ) : (
               <div className="space-y-3">
                 {maturedLots.map((l) => (
@@ -1686,40 +1939,38 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
           <div>
             <p className="text-sm font-black text-gray-800 mb-3">{t.walletActiveCycles}</p>
             {activeLots.length === 0 ? (
-              <p className="text-sm text-gray-500">{t.walletNoActiveCycles}</p>
+              <EmptyStateCard
+                icon={PieChart}
+                title={t.walletCyclesEmptyTitle}
+                description={t.walletCyclesEmptyDesc}
+                ctaLabel={t.walletIncreaseEarningsCta}
+                onCtaClick={() => setCurrentView('quotas')}
+              />
             ) : (
               <div className="grid grid-cols-1 min-[540px]:grid-cols-2 gap-3">
                 {activeLots.map((l) => (
-                  <div key={l.id} className="border border-gray-200 rounded-xl p-4">
-                    <p className="font-black text-gray-800">{l.planTitle} x{l.units}</p>
-                    <p className="text-xs text-gray-500">{t.walletStart} {formatDateShort(l.startAt, lang)}</p>
-                    <p className="text-xs text-gray-500">{t.walletEnd} {formatDateShort(l.endAt, lang)}</p>
-                    <div className="mt-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-gray-500">{t.walletTimeRemaining}</p>
-                        <p className="text-xs font-black text-gray-800">{Math.ceil(l.endsInMs / (1000 * 60 * 60 * 24))} {t.walletDays}</p>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2 mt-2 overflow-hidden">
-                        <div
-                          className="h-2 rounded-full bg-[#8A2BE2]"
-                          style={{ width: `${Math.min(100, Math.max(0, ((l.durationMs - l.endsInMs) / l.durationMs) * 100))}%` }}
-                        />
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setDesistModal({ open: true, lotId: l.id })}
-                      className="w-full mt-4 px-4 py-2 rounded-xl border border-gray-300 text-gray-800 font-black hover:border-red-300 hover:text-red-600"
-                    >
-                      {t.walletRequestCancellationBtn}
-                    </button>
-                  </div>
+                  <QuotaLotProgressCard
+                    key={l.id}
+                    lot={l}
+                    lang={lang}
+                    t={t}
+                    onOpenDetails={(lot) => setLotDetailsModal({ open: true, lotId: lot.id })}
+                    onRequestCancellation={(lot) => setDesistModal({ open: true, lotId: lot.id })}
+                  />
                 ))}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      <QuotaLotEarningsModal
+        open={lotDetailsModal.open}
+        lot={lotDetails}
+        lang={lang}
+        t={t}
+        onClose={() => setLotDetailsModal({ open: false, lotId: null })}
+      />
 
       {renewModal.open && selectedLot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1860,189 +2111,87 @@ const WalletView = ({ setCurrentView, user, setUser, onNotify, adminConfig, lang
           </div>
         </div>
       )}
+      <NowpaymentsPaymentModal
+        isOpen={paymentModal.open}
+        payment={paymentModal.payment}
+        onClose={() => setPaymentModal({ open: false, payment: null })}
+      />
     </div>
   );
 };
 
-const TeamView = ({ user, setUser, lang, onNotify, onOpenApn }) => {
+const TeamView = ({ user, lang, onOpenApn }) => {
   const t = getT(lang);
-  const email = (user?.email || '').toLowerCase();
-  const seed = user?.username || email || 'user';
-  const [teamEntry, setTeamEntry] = useState(() => (email ? loadOrSeedTeamForUser(email, seed) : null));
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [copiedRefLink, setCopiedRefLink] = useState(false);
+  const refLink = `https://comunidaderm.com/ref/${user?.username || 'user'}`;
 
   useEffect(() => {
-    if (!email) return;
-    setTeamEntry(loadOrSeedTeamForUser(email, seed));
-  }, [email, seed]);
-
-  const team = teamEntry?.team;
-  const directVol = sumLevel(team, 1);
-  const indirectVol = sumAllLevels(team) - directVol;
-  const rankInfo = getCurrentRank(team);
-  const residual = calcResidual(team, rankInfo.current.key);
-  const entryFee = calcEntryFeeEarnings(team);
-  const nextRankTarget = rankInfo.next?.target || rankInfo.current.target;
-  const nextRankVolume = calcRankVolume(team, nextRankTarget);
-  const rankTitleDisplay = translateRankTitle(rankInfo.current.title, t);
-  const structureLevels = getStructureLevels({ team, residual });
-  const structureTotalBase = getStructureTotalBase(team);
-  const nextTargetPerLeg = getLegTarget(nextRankTarget);
-  const rankProgressPct = getRankProgressPct(rankInfo);
-  const networkLevels = (() => {
-    const st = loadUsersState();
-    const all = listUsers(st);
-    const levels = buildReferralLevels({ users: all, rootUsername: user?.username, maxDepth: 5 });
-    const normalizeDownline = (u, idx) => {
-      const e = String(u?.email || '').toLowerCase();
-      const s = u?.username || e || 'user';
-      const tEntry = e ? loadOrSeedTeamForUser(e, s) : null;
-      const rInfo = getCurrentRank(tEntry?.team);
-      const holdings = u?.holdings || {};
-      const totalCotas = Number(holdings.cota10 || 0) + Number(holdings.cota50 || 0) + Number(holdings.cota100 || 0);
-      return {
-        key: e || `${String(u?.username || '').toLowerCase()}-${idx}`,
-        username: u?.username || '—',
-        email: u?.email || '—',
-        createdAt: u?.createdAt || u?.updatedAt || null,
-        holdings,
-        totalCotas,
-        rankTitle: translateRankTitle(rInfo?.current?.title || '—', t),
-      };
-    };
-    return [1, 2, 3, 4, 5].map((lvl) => ({
-      level: lvl,
-      users: (levels[lvl - 1] || []).map((u, idx) => normalizeDownline(u, idx)),
-    }));
-  })();
-
-  useEffect(() => {
-    if (!email || !teamEntry) return;
-    const currentKey = rankInfo.current.key;
-    const last = teamEntry.lastRankKey;
-    if (!last) {
-      const updated = updateTeamForUser(email, { lastRankKey: currentKey });
-      setTeamEntry(updated);
-      return;
-    }
-    if (last !== currentKey) {
-      const updated = updateTeamForUser(email, { lastRankKey: currentKey });
-      setTeamEntry(updated);
-      onNotify?.({
-        kind: 'RANK_UP',
-        at: new Date().toISOString(),
-        ref: `rank:${currentKey}`,
-        i18n: {
-          titleKey: 'rankUpTitle',
-          messageKey: 'rankUpMessageTemplate',
-          values: { rank: rankInfo.current.title },
-        },
+    if (!user) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchMyTeamSummary({ maxDepth: 5 })
+      .then((res) => {
+        if (cancelled) return;
+        setSummary(res.ok ? res.summary : null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-    }
-  }, [email, teamEntry, rankInfo.current.key]);
-
-  const simulateResidual = () => {
-    if (!email) return;
-    const today = new Date().toISOString().slice(0, 10);
-    if (teamEntry?.lastResidualDay === today) {
-      alert(t.residualAlreadySimulated);
-      return;
-    }
-    const amount = residual.total;
-    const currentUser = normalizeUser(user);
-    const balances = { ...(currentUser.balances || {}) };
-    balances.available = Number((Number(balances.available || 0) + amount).toFixed(2));
-    balances.teamEarnings = Number((Number(balances.teamEarnings || 0) + amount).toFixed(2));
-
-    const tx = {
-      id: `${Date.now()}-residual`,
-      at: new Date().toISOString(),
-      kind: 'RESIDUAL',
-      type: `Residual diário (${rankInfo.current.title})`,
-      amount,
-      payment: 'SISTEMA',
-      status: 'Creditado',
+    return () => {
+      cancelled = true;
     };
-    const updatedUser = { ...currentUser, balances, transactions: [tx, ...(currentUser.transactions || [])] };
-    localStorage.setItem('rm_user', JSON.stringify(updatedUser));
-    setUser(updatedUser);
-    const updatedEntry = updateTeamForUser(email, { lastResidualDay: today });
-    setTeamEntry(updatedEntry);
-    onNotify?.({
-      kind: 'RESIDUAL',
-      title: 'Residual creditado',
-      message: `Residual do dia creditado: ${formatTeamMoney(amount)} (${rankInfo.current.title}).`,
-      at: tx.at,
-      ref: tx.id,
-    });
+  }, [user?.email]);
+
+  const rankTitle = translateRankTitle(summary?.rank?.title || 'Ferro', t);
+  const directVol = Number(summary?.directVolume || 0);
+  const indirectVol = Number(summary?.indirectVolume || 0);
+  const residualTotal = Number(summary?.residual?.total || 0);
+  const te1 = Number(summary?.entryFee?.level1 || 0);
+  const te2 = Number(summary?.entryFee?.level2 || 0);
+  const te3 = Number(summary?.entryFee?.level3 || 0);
+  const legs = Array.isArray(summary?.legs) ? summary.legs : [];
+  const currentRankVolume = Number(summary?.rank?.volume || 0);
+  const nextRank = summary?.rank?.next || null;
+
+  const handleCopyRefLink = async () => {
+    try {
+      await navigator.clipboard.writeText(refLink);
+      setCopiedRefLink(true);
+      window.setTimeout(() => setCopiedRefLink(false), 1800);
+    } catch {
+      setCopiedRefLink(false);
+    }
   };
+
+  const handleOpenPresentation = () =>
+    onOpenApn?.({
+      page: 10,
+      title: `${t.apnPresentation} • ${t.apnTeamEarnings}`,
+      shortcuts: [
+        { label: t.apnTeamEarnings, page: 10 },
+        { label: t.apnResidual, page: 11 },
+      ],
+    });
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col lg:flex-row justify-between lg:items-center bg-[#1A1A1A] p-6 rounded-2xl shadow-lg border border-[#8A2BE2] gap-6">
-        <div>
-          <h2 className="text-2xl font-bold text-white mb-1">{t.teamPageTitle}</h2>
-          <p className="text-gray-400 text-sm">{t.teamPageSubtitle}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 lg:gap-5">
-          <div className="text-center">
-            <p className="text-xs text-gray-500">{t.rank}</p>
-            <p className="text-xl font-black text-[#00FF00]">{translateRankTitle(rankInfo.current.title, t)}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-500">{t.teamDirectVolume}</p>
-            <p className="text-xl font-bold text-white">{formatTeamMoney(directVol)}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-500">{t.teamIndirectVolume}</p>
-            <p className="text-xl font-bold text-white">{formatTeamMoney(indirectVol)}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() =>
-              onOpenApn?.({
-                page: 10,
-                title: `${t.apnPresentation} • ${t.apnTeamEarnings}`,
-                shortcuts: [
-                  { label: t.apnTeamEarnings, page: 10 },
-                  { label: t.apnResidual, page: 11 },
-                ],
-              })
-            }
-            className="px-4 py-2 rounded-xl border border-gray-700 text-white font-black hover:border-[#00FF00]"
-          >
-            {t.viewPresentation}
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <TeamStructureCard
-          t={t}
-          rankTitle={rankTitleDisplay}
-          totalBase={structureTotalBase}
-          activeResidualRate={residual.rates[1]}
-          levels={structureLevels}
-        />
-
-        <TeamResidualCard
-          t={t}
-          rankTitle={rankTitleDisplay}
-          residual={residual}
-          onSimulateResidual={simulateResidual}
-        />
-
-        <TeamRankCard
-          t={t}
-          lang={lang}
-          rankInfo={rankInfo}
-          rankProgressPct={rankProgressPct}
-          nextRankVolume={nextRankVolume}
-          nextTargetPerLeg={nextTargetPerLeg}
-          entryFee={entryFee}
-        />
-      </div>
-
-      <TeamNetworkLevelsCard t={t} lang={lang} levels={networkLevels} />
+      <TeamOverviewSection
+        t={t}
+        rankTitle={rankTitle}
+        directVol={directVol}
+        indirectVol={indirectVol}
+        residualTotal={residualTotal}
+        entryFee={{ level1: te1, level2: te2, level3: te3 }}
+        legs={legs}
+        currentRankVolume={currentRankVolume}
+        nextRank={nextRank}
+        loading={loading}
+        copied={copiedRefLink}
+        onCopyRefLink={handleCopyRefLink}
+        onOpenPresentation={handleOpenPresentation}
+      />
     </div>
   );
 };
@@ -2050,121 +2199,102 @@ const TeamView = ({ user, setUser, lang, onNotify, onOpenApn }) => {
 const BonusView = ({ user, adminConfig, onOpenApn, lang }) => {
   const t = getT(lang);
   const email = (user?.email || '').toLowerCase();
-  const seed = user?.username || email || 'user';
-  const teamEntry = email ? loadOrSeedTeamForUser(email, seed) : null;
-  const team = teamEntry?.team;
-  const rankInfo = getCurrentRank(team);
   const locale = getLocaleForLang(lang);
+  const [summary, setSummary] = useState(null);
+  const [eliteBoard, setEliteBoard] = useState({});
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      const [teamRes, eliteRes] = await Promise.all([fetchMyTeamSummary({ maxDepth: 5 }), fetchEliteCandidates()]);
+      if (cancelled) return;
+      setSummary(teamRes.ok ? teamRes.summary : null);
+      setEliteBoard(eliteRes.ok ? computeEliteBoard(eliteRes.users) : {});
+      setLoading(false);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.email]);
+
   const formatPct = (rate) => {
     const n = Number(rate || 0) * 100;
     const hasDecimal = Math.abs(n - Math.round(n)) > 1e-9;
     return `${n.toLocaleString(locale, { minimumFractionDigits: hasDecimal ? 1 : 0, maximumFractionDigits: 1 })}%`;
   };
-
-  const usersState = loadUsersState();
-  const usersWithRank = listUsers(usersState).map((u) => {
-    const nu = normalizeUser(u);
-    const e = String(nu?.email || '').toLowerCase();
-    const s = nu?.username || e || 'user';
-    const t = e ? loadOrSeedTeamForUser(e, s)?.team : null;
-    const rk = getCurrentRank(t).current.key;
-    return { ...nu, rankKey: rk };
-  });
-  const eliteBoard = computeEliteBoard(usersWithRank);
   const eliteInfo = calcElitePool(adminConfig?.elite?.fortnightProfitUsd);
   const elitePool = eliteInfo.elitePool;
+  const currentRankKey = String(summary?.rank?.key || 'FERRO').toUpperCase();
+  const currentRankTitle = summary?.rank?.title || 'Ferro';
+  const currentRankVolume = Number(summary?.rank?.volume || 0);
+  const nextRank = summary?.rank?.next || null;
+  const myEligibleCat = getEliteCategoryForRank(currentRankKey);
 
   const myAssignedCat = ELITE_CATEGORIES.map((c) => c.key).find((k) =>
     (eliteBoard?.[k]?.occupants || []).some((o) => String(o.email || '').toLowerCase() === email)
   );
-  const myEligibleCat = getEliteCategoryForRank(rankInfo.current.key);
   const myDisplayCat = myAssignedCat || myEligibleCat;
   const mySlot =
     myAssignedCat && eliteBoard?.[myAssignedCat]
       ? (eliteBoard[myAssignedCat].occupants || []).findIndex((o) => String(o.email || '').toLowerCase() === email)
       : -1;
 
+  const getRankProgressVolume = (target) => {
+    const legs = Array.isArray(summary?.legs) ? summary.legs : [];
+    const numericTarget = Number(target || 0);
+    const cap = numericTarget >= 200 ? numericTarget * 0.5 : null;
+    return legs.reduce((acc, leg) => {
+      const weighted = Number(leg?.weighted || 0);
+      return acc + (cap == null ? weighted : Math.min(weighted, cap));
+    }, 0);
+  };
+  const hasBonusMovement = currentRankVolume > 0 || Boolean(myDisplayCat) || Number(elitePool || 0) > 0;
+  const bonusStatusLabel = myDisplayCat
+    ? mySlot >= 0
+      ? fillTemplate(t.bonusSlotTemplate, { slot: String(mySlot + 1), cat: String(myDisplayCat) })
+      : fillTemplate(t.bonusQualifiedWaitingTemplate, { cat: String(myDisplayCat) })
+    : t.bonusNotQualified;
+  const nextRankLabel = nextRank
+    ? fillTemplate(t.bonusNextRankTemplate, {
+        rank: translateRankTitle(nextRank.title, t),
+        target: formatMoneyUsdInt(nextRank.target, lang),
+      })
+    : t.bonusTop;
+  const handleOpenResidualPdf = () =>
+    onOpenApn?.({
+      page: 11,
+      title: `${t.apnPresentation} • ${t.apnResidualEarnings}`,
+      shortcuts: [
+        { label: t.apnResidualEarnings, page: 11 },
+        { label: t.apnElitePool, page: 12 },
+      ],
+    });
+  const handleOpenElitePdf = () =>
+    onOpenApn?.({
+      page: 12,
+      title: `${t.apnPresentation} • ${t.apnElitePool}`,
+      shortcuts: [
+        { label: t.apnResidualEarnings, page: 11 },
+        { label: t.apnElitePool, page: 12 },
+      ],
+    });
+
   return (
     <div className="p-4 min-[540px]:p-6 max-w-6xl mx-auto space-y-6">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="relative p-6 min-[540px]:p-8 lg:p-10">
-          <div className="pointer-events-none absolute -top-32 -left-32 w-72 h-72 bg-emerald-900/20 rounded-[56px] rotate-12 blur-sm" />
-          <div className="pointer-events-none absolute -bottom-40 -right-40 w-80 h-80 bg-emerald-900/20 rounded-[64px] -rotate-12 blur-sm" />
-          <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-8">
-              <div className="flex items-center gap-3 text-emerald-900">
-                <Gift className="w-7 h-7" />
-                <p className="text-lg font-semibold">{t.bonusMeritEarnings}</p>
-              </div>
-              <h2 className="mt-2 text-4xl lg:text-5xl font-black text-emerald-900">{t.bonusResidualTitle}</h2>
-              <p className="mt-4 text-sm min-[540px]:text-base text-gray-700 max-w-2xl">
-                {t.bonusResidualDesc1} {t.bonusResidualDesc2}
-              </p>
-              <p className="mt-4 text-center text-sm min-[540px]:text-base font-black text-emerald-900">
-                {t.bonusResidualQuote}
-              </p>
-            </div>
-            <div className="lg:col-span-4 flex items-end">
-              <div className="w-full bg-white/90 backdrop-blur border border-gray-200 rounded-2xl p-4">
-                <p className="text-xs text-gray-500">{t.bonusYourCurrentRank}</p>
-                <p className="text-2xl font-black text-emerald-900">{translateRankTitle(rankInfo.current.title, t)}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {t.bonusRankVolumeRule}
-                </p>
-                <div className="mt-3 flex items-end justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs text-gray-500">{t.bonusCurrentVolume}</p>
-                    <p className="text-lg font-black text-[#00FF00] truncate">{formatMoneyUsd(rankInfo.volume, lang)}</p>
-                  </div>
-                  {rankInfo.next ? (
-                    <div className="text-right">
-                      <p className="text-[11px] text-gray-500">{t.bonusNext}</p>
-                      <p className="text-xs font-black text-gray-800">{translateRankTitle(rankInfo.next.title, t)}</p>
-                      <p className="text-[11px] text-gray-500">{formatMoneyUsdInt(rankInfo.next.target, lang)}</p>
-                    </div>
-                  ) : (
-                    <span className="text-xs font-black text-emerald-900">{t.bonusTop}</span>
-                  )}
-                </div>
-                <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onOpenApn?.({
-                        page: 11,
-                        title: `${t.apnPresentation} • ${t.apnResidualEarnings}`,
-                        shortcuts: [
-                          { label: t.apnResidualEarnings, page: 11 },
-                          { label: t.apnElitePool, page: 12 },
-                        ],
-                      })
-                    }
-                    className="px-4 py-2 rounded-xl bg-[#00FF00] text-black font-black"
-                  >
-                    {t.bonusViewResidualPdf}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onOpenApn?.({
-                        page: 12,
-                        title: `${t.apnPresentation} • ${t.apnElitePool}`,
-                        shortcuts: [
-                          { label: t.apnResidualEarnings, page: 11 },
-                          { label: t.apnElitePool, page: 12 },
-                        ],
-                      })
-                    }
-                    className="px-4 py-2 rounded-xl border border-gray-200 text-gray-800 font-black hover:bg-gray-50"
-                  >
-                    {t.bonusViewElitePdf}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <BonusOverviewSection
+        t={t}
+        hasMovement={hasBonusMovement}
+        rankTitle={translateRankTitle(currentRankTitle, t)}
+        currentVolume={formatMoneyUsd(currentRankVolume, lang)}
+        nextRankLabel={nextRankLabel}
+        statusLabel={bonusStatusLabel}
+        onOpenResidual={handleOpenResidualPdf}
+        onOpenElite={handleOpenElitePdf}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -2253,9 +2383,18 @@ const BonusView = ({ user, adminConfig, onOpenApn, lang }) => {
 
       <div className="bg-white rounded-2xl p-4 min-[540px]:p-6 shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-6">{t.bonusRewardsTrackTitle}</h3>
+        {loading && <p className="text-sm text-gray-500 mb-4">{t.loading}</p>}
+        {currentRankVolume <= 0 ? (
+          <EmptyStateCard
+            icon={Gift}
+            title={t.bonusTrackEmptyTitle}
+            description={t.bonusTrackEmptyDesc}
+            className="mb-5"
+          />
+        ) : null}
         <div className="space-y-5">
           {RANKS.map((r) => {
-            const v = calcRankVolume(team, r.target).total;
+            const v = getRankProgressVolume(r.target);
             const progress = r.target > 0 ? Math.min(100, (v / r.target) * 100) : 0;
             const unlocked = v >= r.target;
             return (
@@ -2307,16 +2446,7 @@ const BonusView = ({ user, adminConfig, onOpenApn, lang }) => {
           </div>
           <button
             type="button"
-            onClick={() =>
-              onOpenApn?.({
-                page: 12,
-                title: `${t.apnPresentation} • ${t.apnElitePool}`,
-                shortcuts: [
-                  { label: t.apnResidualEarnings, page: 11 },
-                  { label: t.apnElitePool, page: 12 },
-                ],
-              })
-            }
+            onClick={handleOpenElitePdf}
             className="px-4 py-2 rounded-xl border border-gray-200 text-gray-800 font-black hover:bg-gray-50"
           >
             {t.bonusViewInPdf}
@@ -2334,17 +2464,26 @@ const BonusView = ({ user, adminConfig, onOpenApn, lang }) => {
           </div>
           <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
             <p className="text-xs text-gray-500">{t.bonusYourStatus}</p>
-              {myDisplayCat ? (
+            {myDisplayCat ? (
               <p className="text-sm font-black text-gray-800">
-                  {mySlot >= 0
-                    ? fillTemplate(t.bonusSlotTemplate, { slot: String(mySlot + 1), cat: String(myDisplayCat) })
-                    : fillTemplate(t.bonusQualifiedWaitingTemplate, { cat: String(myDisplayCat) })}
+                {mySlot >= 0
+                  ? fillTemplate(t.bonusSlotTemplate, { slot: String(mySlot + 1), cat: String(myDisplayCat) })
+                  : fillTemplate(t.bonusQualifiedWaitingTemplate, { cat: String(myDisplayCat) })}
               </p>
             ) : (
               <p className="text-sm font-black text-gray-800">{t.bonusNotQualified}</p>
             )}
           </div>
         </div>
+
+        {!myDisplayCat ? (
+          <EmptyStateCard
+            icon={Gift}
+            title={t.bonusEliteEmptyTitle}
+            description={t.bonusEliteEmptyDesc}
+            className="mt-5"
+          />
+        ) : null}
 
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
           {ELITE_CATEGORIES.map((cat) => {
@@ -2404,54 +2543,36 @@ const BonusView = ({ user, adminConfig, onOpenApn, lang }) => {
 const ReportsView = ({ user, lang }) => {
   const currentUser = normalizeUser(user);
   const t = getT(lang);
+  const [visibleCount, setVisibleCount] = useState(20);
 
-  const reports = currentUser.transactions.map((tx, i) => ({
-    id: tx.id || i,
-    date: formatDateTime(tx.at, lang),
-    type: translateTransactionType(tx.type, t),
-    value: `${tx.amount >= 0 ? '+' : '-'}${formatMoneyUsd(Math.abs(tx.amount), lang)}`,
-    status: getStatusLabel(tx.status, t),
-    color: tx.amount > 0 ? 'text-green-600' : 'text-red-500'
-  }));
-
-  if (reports.length === 0) {
-    const now = new Date();
-    const iso1 = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-    const iso2 = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
-    const iso3 = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    reports.push(
-      {
-        id: 1,
-        date: formatDateTime(iso1, lang),
-        type: translateTransactionType('Residual diário (Silver)', t),
-        value: `+${formatMoneyUsd(1.5, lang)}`,
-        status: getStatusLabel('Creditado', t),
-        color: 'text-green-600',
-      },
-      {
-        id: 2,
-        date: formatDateTime(iso2, lang),
-        type: translateTransactionType('Residual diário (Silver)', t),
-        value: `+${formatMoneyUsd(1.5, lang)}`,
-        status: getStatusLabel('Creditado', t),
-        color: 'text-green-600',
-      },
-      {
-        id: 3,
-        date: formatDateTime(iso3, lang),
-        type: translateTransactionType('Ganho de Rede (TE) - Nível 1 - Compra alfabrazil', t),
-        value: `+${formatMoneyUsd(4, lang)}`,
-        status: getStatusLabel('Creditado', t),
-        color: 'text-blue-600',
-      }
-    );
-  }
+  const reports = (Array.isArray(currentUser.transactions) ? currentUser.transactions : [])
+    .slice()
+    .sort((a, b) => String(b?.at || '').localeCompare(String(a?.at || '')))
+    .map((tx, i) => ({
+      id: tx.id || i,
+      date: formatDateTime(tx.at, lang),
+      type: translateTransactionType(tx.type, t),
+      value: `${tx.amount >= 0 ? '+' : '-'}${formatMoneyUsd(Math.abs(tx.amount), lang)}`,
+      status: getStatusLabel(tx.status, t),
+      color: tx.amount > 0 ? 'text-green-600' : 'text-red-500'
+    }));
+  const totalCount = reports.length;
+  const creditCount = reports.filter((rep) => String(rep.value || '').startsWith('+')).length;
+  const debitCount = reports.filter((rep) => String(rep.value || '').startsWith('-')).length;
+  const latestDate = reports[0]?.date || '';
 
   return (
     <div className="p-4 min-[540px]:p-6 max-w-7xl mx-auto space-y-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">{t.reportsTitle}</h2>
-      
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <ReportsOverviewSection
+        t={t}
+        totalCount={totalCount}
+        creditCount={creditCount}
+        debitCount={debitCount}
+        latestDate={latestDate}
+        hasReports={reports.length > 0}
+      />
+
+      <div className="overflow-hidden rounded-[28px] border border-gray-100 bg-white shadow-[0_20px_60px_-40px_rgba(15,23,42,0.28)]">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -2463,7 +2584,17 @@ const ReportsView = ({ user, lang }) => {
               </tr>
             </thead>
             <tbody className="text-sm text-gray-700">
-              {reports.map(rep => (
+              {reports.length === 0 && (
+                <tr>
+                  <td className="px-6 py-10 text-center text-gray-500" colSpan="4">
+                    <div className="mx-auto max-w-xl">
+                      <p className="text-base font-black text-gray-800">{t.reportsTableEmptyTitle}</p>
+                      <p className="mt-2 text-sm leading-6 text-gray-500">{t.reportsTableEmptyDesc}</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {reports.slice(0, visibleCount).map(rep => (
                 <tr key={rep.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                   <td className="p-4 whitespace-nowrap">{rep.date}</td>
                   <td className="p-4">{rep.type}</td>
@@ -2474,9 +2605,15 @@ const ReportsView = ({ user, lang }) => {
             </tbody>
           </table>
         </div>
-        <div className="p-4 text-center bg-gray-50 border-t border-gray-100 text-sm text-gray-500 cursor-pointer hover:text-gray-800">
-          {t.reportsLoadMore}
-        </div>
+        {reports.length > visibleCount && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((c) => c + 20)}
+            className="w-full p-4 text-center bg-gray-50 border-t border-gray-100 text-sm text-gray-500 cursor-pointer hover:text-gray-800"
+          >
+            {t.reportsLoadMore}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2487,88 +2624,106 @@ const App = () => {
   const [lang, setLang] = useState(() => getInitialLang());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState('home');
-  const [adminConfig, setAdminConfig] = useState(loadAdminConfig());
+  const [adminConfig, setAdminConfig] = useState(null);
+  const [publicStats, setPublicStats] = useState({ globalSold: 0 });
   const [historyModal, setHistoryModal] = useState({ open: false, bankId: null, bankName: null });
   const [supportModal, setSupportModal] = useState({ open: false, channel: null, name: null });
   const [faqOpen, setFaqOpen] = useState(false);
   const [apnModal, setApnModal] = useState({ open: false, page: 1, title: null, shortcuts: [] });
   const [supportMenuOpen, setSupportMenuOpen] = useState(false);
   const [supportUnread, setSupportUnread] = useState(0);
-  const [notificationsState, setNotificationsState] = useState(loadNotificationsState());
   const [notificationsUnread, setNotificationsUnread] = useState(0);
   const [notificationsListState, setNotificationsListState] = useState([]);
+  const [teamSummary, setTeamSummary] = useState(null);
+  const lastUserSnapshotRef = useRef('');
 
   const setUserLang = (next) => setLang(normalizeLang(next));
   const effectiveLang = currentView === 'admin' ? 'pt' : lang;
   const tEff = getT(effectiveLang);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LANG_STORAGE_KEY, normalizeLang(lang));
-    } catch {}
+    persistLang(lang);
   }, [lang]);
 
   useEffect(() => {
     try {
-      const path = String(window.location?.pathname || '');
-      const match = path.match(/\/ref\/([^/]+)/i);
-      if (match && match[1]) {
-        const ref = decodeURIComponent(match[1]).trim();
-        if (ref) localStorage.setItem('rm_ref_username', ref);
-      }
+      const url = new URL(window.location.href);
+      const status = String(url.searchParams.get('np') || '').trim().toLowerCase();
+      if (!status) return;
+      if (status === 'success') alert(tEff.nowpaymentsReturnSuccess);
+      if (status === 'cancel') alert(tEff.nowpaymentsReturnCancel);
+      url.searchParams.delete('np');
+      url.searchParams.delete('orderId');
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
     } catch {}
+  }, [tEff.nowpaymentsReturnCancel, tEff.nowpaymentsReturnSuccess]);
 
-    // Verifica se há usuário no localStorage ao carregar
-    const storedUser = localStorage.getItem('rm_user');
-    if (storedUser) {
-      const nowIso = new Date().toISOString();
-      const parsed = JSON.parse(storedUser);
-      const base = { ...(parsed || {}) };
-      const normalized = normalizeUser({ ...base, createdAt: base.createdAt || nowIso });
-      const email = String(normalized?.email || '').toLowerCase();
-      const seed = normalized?.username || email || 'user';
-      const teamEntry = email ? loadOrSeedTeamForUser(email, seed) : null;
-      const rankKey = getCurrentRank(teamEntry?.team).current.key;
-      const withElite = ensureEliteAchievedAt(normalized, rankKey, normalized.createdAt);
-      localStorage.setItem('rm_user', JSON.stringify(withElite));
-      setUser(withElite);
-    }
+  useEffect(() => {
+    const restore = async () => {
+      const sessionResult = await getSupabaseSession();
+      if (!sessionResult.ok || !sessionResult.session?.user) return;
+
+      const dash = await fetchMyDashboard({ maxTransactions: 200 });
+      if (!dash.ok || !dash.dashboard?.profile) return;
+
+      const prof = dash.dashboard.profile || {};
+      const wallets = dash.dashboard.wallets || {};
+      const tx = Array.isArray(dash.dashboard.transactions) ? dash.dashboard.transactions : [];
+      const nextUser = normalizeUser({
+        ...prof,
+        isAdmin: Boolean(prof.is_admin) || Boolean(prof.isAdmin),
+        rankKey: prof.rank_key || prof.rankKey,
+        teamState: prof.team_state || prof.teamState || {},
+        quotaLots: prof.quota_lots || prof.quotaLots || [],
+        wallets: {
+          usdtBep20: String(wallets?.usdt_bep20 || wallets?.usdtBep20 || ''),
+          usdtTrc20: String(wallets?.usdt_trc20 || wallets?.usdtTrc20 || ''),
+          usdcArbitrum: String(wallets?.usdc_arbitrum || wallets?.usdcArbitrum || ''),
+        },
+        transactions: tx,
+      });
+      setUser(nextUser);
+    };
+    void restore();
   }, []);
 
   useEffect(() => {
-    const email = String(user?.email || '').toLowerCase();
-    if (!email) return;
-    const st = loadUsersState();
-    saveUsersState(upsertUser(st, user));
+    if (!user) return;
+    let cancelled = false;
+
+    const run = async () => {
+      const [cfgRes, banksRes, statsRes] = await Promise.all([fetchAppConfig(), fetchBanks(), fetchPublicStats()]);
+      if (cancelled) return;
+      const nextCfg = buildAdminConfigFromSupabase({
+        config: cfgRes.ok ? cfgRes.config : {},
+        banks: banksRes.ok ? banksRes.banks : [],
+      });
+      const nextStats = statsRes.ok ? statsRes.stats : { globalSold: 0 };
+      setPublicStats(nextStats);
+      setAdminConfig({ ...nextCfg, globalSold: Number(nextStats?.globalSold || 0) });
+    };
+
+    run();
+    const id = window.setInterval(run, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
   }, [user]);
 
-  useEffect(() => {
-    const cfg = loadAdminConfig();
-    setAdminConfig(cfg);
-  }, []);
-
-  const syncNotifications = (email) => {
-    const st = loadNotificationsState();
-    const list = listNotifications(st, email);
-    setNotificationsState(st);
-    setNotificationsListState(list);
-    setNotificationsUnread(getUnreadNotificationsCount(st, email));
+  const syncNotifications = async () => {
+    const profileId = user?.id || user?.profileId;
+    const res = await fetchMyNotifications({ profileId, limit: 50 });
+    if (!res.ok) return;
+    setNotificationsListState(res.notifications);
+    setNotificationsUnread(res.notifications.filter((n) => !n.read).length);
   };
 
-  const pushNotification = (email, n) => {
-    const st = loadNotificationsState();
-    const next = saveNotificationsState(addNotification(st, email, n));
-    setNotificationsState(next);
-    setNotificationsListState(listNotifications(next, email));
-    setNotificationsUnread(getUnreadNotificationsCount(next, email));
-  };
-
-  const markAllNotifications = (email) => {
-    const st = loadNotificationsState();
-    const next = saveNotificationsState(markAllRead(st, email));
-    setNotificationsState(next);
-    setNotificationsListState(listNotifications(next, email));
-    setNotificationsUnread(getUnreadNotificationsCount(next, email));
+  const markAllNotifications = async () => {
+    const profileId = user?.id || user?.profileId;
+    const res = await markAllMyNotificationsRead({ profileId });
+    if (!res.ok) return;
+    await syncNotifications();
   };
 
   const openApn = (cfg) => {
@@ -2580,198 +2735,97 @@ const App = () => {
     });
   };
 
-  const round2 = (n) => Number(Number(n || 0).toFixed(2));
-
-  const buildEliteBoard = () => {
-    const st = loadUsersState();
-    const users = listUsers(st);
-    let nextSt = st;
-    let changed = false;
-    const usersWithRank = users.map((u) => {
-      const normalized = normalizeUser(u);
-      const email = String(normalized?.email || '').toLowerCase();
-      const seed = normalized?.username || email || 'user';
-      const teamEntry = email ? loadOrSeedTeamForUser(email, seed) : null;
-      const rankKey = getCurrentRank(teamEntry?.team).current.key;
-      const at = normalized.createdAt || normalized.updatedAt || new Date().toISOString();
-      const withElite = ensureEliteAchievedAt(normalized, rankKey, at);
-      if (withElite !== normalized) {
-        nextSt = upsertUser(nextSt, withElite);
-        changed = true;
-      }
-      return { ...withElite, rankKey };
-    });
-    if (changed) saveUsersState(nextSt);
-    return { usersWithRank, board: computeEliteBoard(usersWithRank) };
-  };
-
-  const simulateElitePayout = () => {
-    const cfg = loadAdminConfig();
-    const { elitePool } = calcElitePool(cfg?.elite?.fortnightProfitUsd);
-    if (!elitePool) {
-      alert(tEff.bonusAdminProfitMissingAlert);
-      return null;
-    }
-    const { board } = buildEliteBoard();
-    const nowIso = new Date().toISOString();
-
-    let usersSt = loadUsersState();
-    let notifSt = loadNotificationsState();
-
-    ELITE_CATEGORIES.forEach((cat) => {
-      const slotAmount = calcElitePayoutPerSlot(elitePool, cat.key);
-      const occupants = board?.[cat.key]?.occupants || [];
-      occupants.forEach((o, idx) => {
-        const email = String(o.email || '').toLowerCase();
-        const existing = getUserByEmail(usersSt, email);
-        if (!existing) return;
-        const normalized = normalizeUser(existing);
-        const balances = { ...(normalized.balances || {}) };
-        balances.available = round2(Number(balances.available || 0) + slotAmount);
-        balances.eliteEarnings = round2(Number(balances.eliteEarnings || 0) + slotAmount);
-        const tx = {
-          id: `${Date.now()}-elite-${cat.key}-${idx}`,
-          at: nowIso,
-          kind: 'ELITE',
-          type: `Bolsão Elite (${cat.title})`,
-          amount: slotAmount,
-          payment: 'SISTEMA',
-          status: 'Creditado',
-        };
-        const updated = { ...normalized, balances, transactions: [tx, ...(normalized.transactions || [])] };
-        usersSt = upsertUser(usersSt, updated);
-
-        if (!hasNotificationRef(notifSt, email, 'ELITE', tx.id)) {
-          notifSt = addNotification(notifSt, email, {
-            kind: 'ELITE',
-            at: nowIso,
-            ref: tx.id,
-            i18n: {
-              titleKey: 'bonusEliteCreditedTitle',
-              messageKey: 'eliteCreditedMessageTemplate',
-              values: { amount: slotAmount, cat: cat.title },
-            },
-          });
-        }
-
-        const currentEmail = String(user?.email || '').toLowerCase();
-        if (currentEmail && currentEmail === email) {
-          localStorage.setItem('rm_user', JSON.stringify(updated));
-          setUser(updated);
-        }
-      });
-    });
-
-    saveUsersState(usersSt);
-    saveNotificationsState(notifSt);
-
-    const savedCfg = saveAdminConfig({ ...cfg, elite: { ...(cfg.elite || {}), lastPaidAt: nowIso } });
-    setAdminConfig(savedCfg);
-    const currentEmail = String(user?.email || '').toLowerCase();
-    if (currentEmail) syncNotifications(currentEmail);
-    alert(tEff.bonusEliteSimulatedSuccessAlert);
-    return savedCfg;
-  };
+  void 0;
 
   useEffect(() => {
-    const email = (user?.email || '').toLowerCase();
-    if (!email) return;
-
-    const compute = () => {
-      const st = loadSupportState();
-      setSupportUnread(getUnreadCountForUser(st, email));
-
-      const notifSt = loadNotificationsState();
-      const threads = Object.values(st?.threads || {}).filter((t) => (t.userEmail || '').toLowerCase() === email);
-      let nextNotif = notifSt;
-      let changed = false;
-      threads.forEach((t) => {
-        t.messages
-          .filter((m) => m.from === 'admin' && !m.readByUser)
-          .forEach((m) => {
-            const ref = `support:${m.id}`;
-            if (hasNotificationRef(nextNotif, email, 'SUPPORT_MSG', ref)) return;
-            nextNotif = addNotification(nextNotif, email, {
-              kind: 'SUPPORT_MSG',
-              title: 'Mensagem do suporte',
-              message: m.text,
-              at: m.at,
-              ref,
-            });
-            changed = true;
-          });
-      });
-
-      if (changed) {
-        const saved = saveNotificationsState(nextNotif);
-        setNotificationsState(saved);
-        setNotificationsListState(listNotifications(saved, email));
-        setNotificationsUnread(getUnreadNotificationsCount(saved, email));
-      } else {
-        setNotificationsUnread(getUnreadNotificationsCount(notifSt, email));
-        setNotificationsListState(listNotifications(notifSt, email));
-        setNotificationsState(notifSt);
-      }
+    const profileId = user?.id || user?.profileId;
+    if (!profileId) return;
+    let cancelled = false;
+    const run = async () => {
+      const res = await fetchMySupportUnreadCount({ profileId });
+      if (cancelled || !res.ok) return;
+      setSupportUnread(Number(res.unread || 0));
     };
-
-    compute();
-
-    const intervalId = window.setInterval(compute, 2000);
-
-    const onStorage = (e) => {
-      if (e?.key === 'rm_support') compute();
-    };
-
-    window.addEventListener('storage', onStorage);
+    void run();
+    const id = window.setInterval(() => void run(), 15000);
     return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('storage', onStorage);
+      cancelled = true;
+      window.clearInterval(id);
     };
-  }, [user?.email]);
+  }, [user?.id, user?.profileId]);
+
+  useEffect(() => {
+    const profileId = user?.id || user?.profileId;
+    if (!profileId) {
+      setTeamSummary(null);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const res = await fetchMyTeamSummary({ maxDepth: 5 });
+      if (cancelled || !res.ok) return;
+      setTeamSummary(res.summary);
+    };
+    void run();
+    const id = window.setInterval(() => void run(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user?.id, user?.profileId]);
+
+  useEffect(() => {
+    const profileId = user?.id || user?.profileId;
+    if (!profileId) return;
+    let cancelled = false;
+    const run = async () => {
+      if (cancelled) return;
+      await syncNotifications();
+    };
+    void run();
+    const id = window.setInterval(() => void run(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user?.id, user?.profileId]);
 
   useEffect(() => {
     const email = (user?.email || '').toLowerCase();
     if (!email) return;
-    syncNotifications(email);
-  }, [user?.email]);
 
-  useEffect(() => {
-    const email = (user?.email || '').toLowerCase();
-    if (!email) return;
-
-    const run = () => {
-      const storedUser = localStorage.getItem('rm_user');
-      const storedCfg = loadAdminConfig();
-      if (!storedUser) return;
-
-      const currentUser = normalizeUser(JSON.parse(storedUser));
-      const settled = settleCyclesIfNeeded({ user: currentUser, adminConfig: storedCfg, now: new Date() });
-      const nextUser = settled.user;
-      const nextCfg = settled.adminConfig;
-
-      const userChanged = JSON.stringify(currentUser) !== JSON.stringify(nextUser);
-      const cfgChanged = JSON.stringify(storedCfg) !== JSON.stringify(nextCfg);
-
-      if (userChanged) {
-        localStorage.setItem('rm_user', JSON.stringify(nextUser));
-        setUser(nextUser);
-      }
-      if (cfgChanged) {
-        const saved = saveAdminConfig(nextCfg);
-        setAdminConfig(saved);
-      }
-
-      if (Array.isArray(settled.notifications) && settled.notifications.length) {
-        settled.notifications.forEach((n) => pushNotification(email, n));
-      }
+    const run = async () => {
+      const dash = await fetchMyDashboard({ maxTransactions: 200 });
+      if (!dash.ok || !dash.dashboard?.profile) return;
+      const prof = dash.dashboard.profile || {};
+      const wallets = dash.dashboard.wallets || {};
+      const tx = Array.isArray(dash.dashboard.transactions) ? dash.dashboard.transactions : [];
+      const nextUser = normalizeUser({
+        ...normalizeUser(user),
+        ...prof,
+        isAdmin: Boolean(prof.is_admin) || Boolean(prof.isAdmin),
+        rankKey: prof.rank_key || prof.rankKey,
+        teamState: prof.team_state || prof.teamState || {},
+        quotaLots: prof.quota_lots || prof.quotaLots || [],
+        wallets: {
+          usdtBep20: String(wallets?.usdt_bep20 || wallets?.usdtBep20 || ''),
+          usdtTrc20: String(wallets?.usdt_trc20 || wallets?.usdtTrc20 || ''),
+          usdcArbitrum: String(wallets?.usdc_arbitrum || wallets?.usdcArbitrum || ''),
+        },
+        transactions: tx,
+      });
+      const nextSnapshot = stableSerialize(nextUser);
+      const currentSnapshot = stableSerialize(normalizeUser(user));
+      if (!nextSnapshot || nextSnapshot === currentSnapshot || nextSnapshot === lastUserSnapshotRef.current) return;
+      lastUserSnapshotRef.current = nextSnapshot;
+      setUser(nextUser);
     };
 
-    run();
     const id = window.setInterval(run, 60000);
     return () => window.clearInterval(id);
   }, [user?.email]);
 
-  const handleLogin = (u) => {
+  const handleLogin = async (u) => {
     const nowIso = new Date().toISOString();
     const base = { ...(u || {}) };
     const isRegister = Object.prototype.hasOwnProperty.call(base, 'confirmPassword');
@@ -2779,43 +2833,35 @@ const App = () => {
     if (Object.prototype.hasOwnProperty.call(clean, 'confirmPassword')) delete clean.confirmPassword;
     const withCreated = { ...clean, createdAt: clean.createdAt || nowIso };
     const normalized = normalizeUser(withCreated);
-    const email = String(normalized?.email || '').toLowerCase();
-    const seed = normalized?.username || email || 'user';
-    const teamEntry = email ? loadOrSeedTeamForUser(email, seed) : null;
-    const rankKey = getCurrentRank(teamEntry?.team).current.key;
-    const withElite = ensureEliteAchievedAt(normalized, rankKey, normalized.createdAt);
-    let usersSt = loadUsersState();
-    let finalUser = withElite;
-
-    const myUsername = String(withElite?.username || '').trim();
-    const desiredRef = String(withElite?.referrerUsername || '').trim();
-    if (isRegister && desiredRef) {
-      const refUser = getUserByUsername(usersSt, desiredRef);
-      const safeRef = refUser && String(refUser?.username || '').trim().toLowerCase() !== myUsername.toLowerCase() ? String(refUser.username).trim() : null;
-      if (safeRef) {
-        finalUser = { ...withElite, referrerUsername: safeRef };
-        usersSt = upsertUser(usersSt, finalUser);
-      } else {
-        finalUser = { ...withElite, referrerUsername: null };
-        usersSt = upsertUser(usersSt, finalUser);
-      }
+    const dash = await fetchMyDashboard({ maxTransactions: 200 });
+    if (dash.ok && dash.dashboard?.profile) {
+      const prof = dash.dashboard.profile || {};
+      const wallets = dash.dashboard.wallets || {};
+      const tx = Array.isArray(dash.dashboard.transactions) ? dash.dashboard.transactions : [];
+      const nextUser = normalizeUser({
+        ...normalized,
+        ...prof,
+        isAdmin: Boolean(prof.is_admin) || Boolean(prof.isAdmin),
+        rankKey: prof.rank_key || prof.rankKey,
+        teamState: prof.team_state || prof.teamState || {},
+        quotaLots: prof.quota_lots || prof.quotaLots || [],
+        wallets: {
+          usdtBep20: String(wallets?.usdt_bep20 || wallets?.usdtBep20 || ''),
+          usdtTrc20: String(wallets?.usdt_trc20 || wallets?.usdtTrc20 || ''),
+          usdcArbitrum: String(wallets?.usdc_arbitrum || wallets?.usdcArbitrum || ''),
+        },
+        transactions: tx,
+      });
+      setUser(nextUser);
     } else {
-      usersSt = upsertUser(usersSt, withElite);
+      setUser(normalized);
     }
 
-    saveUsersState(usersSt);
-    localStorage.setItem('rm_user', JSON.stringify(finalUser));
-    setUser(finalUser);
-
-    if (isRegister) {
-      try {
-        localStorage.removeItem('rm_ref_username');
-      } catch {}
-    }
+    if (isRegister) void fetchPublicStats().then((r) => r.ok && setPublicStats(r.stats));
   };
 
-  const handleLogout = () => {
-    // Mantemos o user no localstorage para facilitar o re-login no protótipo, apenas deslogamos o estado
+  const handleLogout = async () => {
+    await signOutFromSupabase();
     setUser(null);
   };
 
@@ -2823,7 +2869,8 @@ const App = () => {
     return <AuthFlow onLogin={handleLogin} lang={lang} setLang={setUserLang} />;
   }
 
-  const isAdmin = (user?.email || '').toLowerCase() === 'rmadmin@gmail.com';
+  const emailLower = (user?.email || '').toLowerCase();
+  const isAdmin = Boolean(user?.isAdmin) || emailLower === 'rmadmin@gmail.com' || emailLower === 'comunidaderendamais@gmail.com';
 
   // Renderiza a view correspondente
   const renderView = () => {
@@ -2833,11 +2880,14 @@ const App = () => {
           <HomeView
             lang={effectiveLang}
             adminConfig={adminConfig}
+            publicStats={publicStats}
             user={user}
+            teamSummary={teamSummary}
             onOpenBankHistory={(bank) => {
               setHistoryModal({ open: true, bankId: bank.id, bankName: bank.name });
             }}
             onOpenApn={openApn}
+            onOpenReports={() => setCurrentView('reports')}
           />
         );
       case 'quotas': 
@@ -2847,23 +2897,20 @@ const App = () => {
             setUser={setUser} 
             lang={effectiveLang}
             adminConfig={adminConfig} 
+            publicStats={publicStats}
             onBuy={(quotasBought) => {
-              const base = Number.isFinite(Number(adminConfig?.globalSold)) ? Number(adminConfig.globalSold) : 45230;
               const inc = Number.isFinite(Number(quotasBought)) ? Number(quotasBought) : 0;
-              const newGlobalSold = base + inc;
-              if (newGlobalSold > QUOTA_GLOBAL_LIMIT) {
-                alert('Limite global de 100.000 cotas atingido.');
-                return;
-              }
-              const saved = saveAdminConfig({ ...adminConfig, globalSold: newGlobalSold });
-              setAdminConfig(saved);
+              if (inc <= 0) return;
+              void (async () => {
+                const statsRes = await fetchPublicStats();
+                if (statsRes.ok && statsRes.stats) setPublicStats(statsRes.stats);
+              })();
             }}
-            onNotify={(n) => pushNotification((user?.email || '').toLowerCase(), n)}
             onOpenApn={openApn}
           />
         );
       case 'team':
-        return <TeamView user={user} setUser={setUser} lang={effectiveLang} onNotify={(n) => pushNotification((user?.email || '').toLowerCase(), n)} onOpenApn={openApn} />;
+        return <TeamView user={user} lang={effectiveLang} onOpenApn={openApn} />;
       case 'wallet':
         return (
           <WalletView
@@ -2872,7 +2919,6 @@ const App = () => {
             setUser={setUser}
             lang={effectiveLang}
             adminConfig={adminConfig}
-            onNotify={(n) => pushNotification((user?.email || '').toLowerCase(), n)}
           />
         );
       case 'reports': return <ReportsView user={user} lang={effectiveLang} />;
@@ -2882,12 +2928,65 @@ const App = () => {
         return (
           <AdminView
             config={adminConfig}
-            onSave={(draft) => {
-              const saved = saveAdminConfig(draft);
-              setAdminConfig(saved);
-              alert('Configuração das bancas atualizada.');
+            onSave={async (draft) => {
+              const patch = {
+                cycle: draft?.cycle || {},
+                elite: {
+                  profitQuinzenal: Number(draft?.elite?.fortnightProfitUsd || 0),
+                  lastPaidAt: draft?.elite?.lastPaidAt ?? null,
+                },
+                support: draft?.support || {},
+              };
+              const cfgRes = await adminPatchAppConfig(patch);
+              if (!cfgRes.ok) {
+                alert(`Falha ao salvar configuração: ${cfgRes.error || 'Erro'}`);
+                return { ok: false, error: cfgRes.error || 'Falha ao salvar configuração.', config: null };
+              }
+
+              const banks = Object.values(draft?.banks || {});
+              const bankResults = await Promise.all(banks.map((b) => adminUpsertBank(b)));
+              const failedBankIndex = bankResults.findIndex((res) => !res?.ok);
+              if (failedBankIndex >= 0) {
+                const failedBank = banks[failedBankIndex];
+                const failedResult = bankResults[failedBankIndex];
+                alert(`Falha ao salvar ${failedBank?.name || failedBank?.id || 'banca'}: ${failedResult?.error || 'Erro desconhecido'}`);
+                return {
+                  ok: false,
+                  error: failedResult?.error || 'Falha ao salvar banca.',
+                  config: null,
+                };
+              }
+
+              const [freshCfg, freshBanks] = await Promise.all([fetchAppConfig(), fetchBanks()]);
+              const nextCfg = buildAdminConfigFromSupabase({
+                config: freshCfg.ok ? freshCfg.config : {},
+                banks: freshBanks.ok ? freshBanks.banks : [],
+              });
+              setAdminConfig(nextCfg);
+              alert('Configuração atualizada.');
+              return { ok: true, error: null, config: nextCfg };
             }}
-            onSimulateElitePayout={() => simulateElitePayout()}
+            onSimulateElitePayout={async ({ profitUsd } = {}) => {
+              const res = await adminProcessElitePayout({ profitUsd, mode: 'MANUAL' });
+              if (!res.ok || !res.data?.ok) {
+                alert(`Falha ao processar Bolsão Elite: ${res.error || res.data?.reason || 'Erro'}`);
+                return null;
+              }
+
+              const [freshCfg, freshBanks] = await Promise.all([fetchAppConfig(), fetchBanks()]);
+              if (freshCfg.ok || freshBanks.ok) {
+                const nextCfg = buildAdminConfigFromSupabase({
+                  config: freshCfg.ok ? freshCfg.config : {},
+                  banks: freshBanks.ok ? freshBanks.banks : [],
+                });
+                setAdminConfig(nextCfg);
+                alert(`Bolsão Elite processado. Lote ${String(res.data?.batchId || '').trim() || 'registrado'}.`);
+                return nextCfg;
+              }
+
+              alert(`Bolsão Elite processado. Lote ${String(res.data?.batchId || '').trim() || 'registrado'}.`);
+              return adminConfig;
+            }}
           />
         );
       default:
@@ -2895,11 +2994,14 @@ const App = () => {
           <HomeView
             lang={effectiveLang}
             adminConfig={adminConfig}
+            publicStats={publicStats}
             user={user}
+            teamSummary={teamSummary}
             onOpenBankHistory={(bank) => {
               setHistoryModal({ open: true, bankId: bank.id, bankName: bank.name });
             }}
             onOpenApn={openApn}
+            onOpenReports={() => setCurrentView('reports')}
           />
         );
     }
@@ -2928,7 +3030,7 @@ const App = () => {
             setCurrentView={setCurrentView}
             notificationsCount={Number(supportUnread || 0) + Number(notificationsUnread || 0)}
             notifications={notificationsListState}
-            onMarkAllNotificationsRead={() => markAllNotifications((user?.email || '').toLowerCase())}
+            onMarkAllNotificationsRead={() => void markAllNotifications()}
           />
           
           <main className="flex-1 overflow-y-auto bg-gray-50 relative pb-20">
@@ -2958,8 +3060,12 @@ const App = () => {
           onClose={() => {
             setSupportModal({ open: false, channel: null, name: null });
             setSupportMenuOpen(false);
-            const st = loadSupportState();
-            setSupportUnread(getUnreadCountForUser(st, (user?.email || '').toLowerCase()));
+            void (async () => {
+              const profileId = user?.id || user?.profileId;
+              if (!profileId) return;
+              const res = await fetchMySupportUnreadCount({ profileId });
+              if (res.ok) setSupportUnread(Number(res.unread || 0));
+            })();
           }}
         />
 
@@ -2984,14 +3090,15 @@ const App = () => {
         />
 
         {/* Floating Support Button */}
-        <div className="fixed bottom-6 right-6 z-40 group flex flex-col items-end gap-3">
-          <div className={`${supportMenuOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto'} transition-all flex flex-col items-end gap-2 duration-300`}>
+        <div className="fixed bottom-6 right-6 z-40 pointer-events-none">
+          <div className={`absolute bottom-16 right-0 ${supportMenuOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'} transition-all flex flex-col items-end gap-2 duration-300`}>
             <button
               type="button"
               onClick={() => {
+                setSupportMenuOpen(false);
                 setSupportModal({ open: true, channel: 'finance', name: tEff.supportChannelFinance });
               }}
-              className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+              className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
             >
               {tEff.supportChannelFinance}
               <span className={`px-2 py-0.5 rounded-full text-xs font-black ${adminConfig?.support?.finance?.online ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -3001,9 +3108,10 @@ const App = () => {
             <button
               type="button"
               onClick={() => {
+                setSupportMenuOpen(false);
                 setSupportModal({ open: true, channel: 'tech', name: tEff.supportChannelTech });
               }}
-              className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+              className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
             >
               {tEff.supportChannelTech}
               <span className={`px-2 py-0.5 rounded-full text-xs font-black ${adminConfig?.support?.tech?.online ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -3014,8 +3122,11 @@ const App = () => {
             </button>
             <button
               type="button"
-              onClick={() => setFaqOpen(true)}
-              className="bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+              onClick={() => {
+                setSupportMenuOpen(false);
+                setFaqOpen(true);
+              }}
+              className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
             >
               {tEff.faqButton}
             </button>
@@ -3024,7 +3135,7 @@ const App = () => {
           <button
             type="button"
             onClick={() => setSupportMenuOpen((s) => !s)}
-            className="p-0 rounded-full shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:scale-105 transition-transform flex items-center justify-center border-2 border-[#00FF00] relative bg-[#1A1A1A]"
+            className="pointer-events-auto p-0 rounded-full shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:scale-105 transition-transform flex items-center justify-center border-2 border-[#00FF00] relative bg-[#1A1A1A]"
           >
             <img src="PERSONAGEM RENDA MAIS com LOGO.png" alt="Suporte" className="w-14 h-14 rounded-full object-cover" />
             {Number(supportUnread || 0) > 0 && (

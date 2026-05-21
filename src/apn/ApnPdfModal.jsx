@@ -4,7 +4,6 @@ import { getT } from '../i18n/i18n.js';
 
 const chipBase = 'px-3 py-2 rounded-xl text-sm font-bold border transition';
 
-const APN_PDF_STORAGE_KEY = 'rm_apn_pdf_lang';
 const APN_PDF_FILES = {
   pt: 'APN_RENDA_MAIS_BR.pdf',
   en: 'APN_RENDA_MAIS_EN-US.pdf',
@@ -23,18 +22,17 @@ const getDocLangDefault = (lang) => {
 export default function ApnPdfModal({ isOpen, initialPage = 1, title, onClose, shortcuts = [], t, lang }) {
   const tr = t || getT(lang);
   const [page, setPage] = useState(Number(initialPage || 1));
-  const [docLang, setDocLang] = useState(() => {
-    try {
-      const stored = String(localStorage.getItem(APN_PDF_STORAGE_KEY) || '').trim().toLowerCase();
-      if (stored === 'pt' || stored === 'en' || stored === 'es' || stored === 'fr') return stored;
-    } catch {}
-    return getDocLangDefault(lang);
-  });
+  const [docLang, setDocLang] = useState(() => getDocLangDefault(lang));
 
   useEffect(() => {
     if (!isOpen) return;
     setPage(Number(initialPage || 1));
   }, [isOpen, initialPage]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setDocLang(getDocLangDefault(lang));
+  }, [isOpen, lang]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -87,9 +85,6 @@ export default function ApnPdfModal({ isOpen, initialPage = 1, title, onClose, s
                 onChange={(e) => {
                   const next = String(e.target.value || '').trim().toLowerCase();
                   setDocLang(next);
-                  try {
-                    localStorage.setItem(APN_PDF_STORAGE_KEY, next);
-                  } catch {}
                 }}
                 className="bg-transparent text-sm font-black text-gray-900 outline-none"
               >

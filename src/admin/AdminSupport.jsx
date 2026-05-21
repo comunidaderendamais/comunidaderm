@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, MessageCircle, Search, Send as SendIcon } from 'lucide-react';
 import {
-  addMessage,
-  getUnreadCountForAdmin,
-  listThreads,
-  loadSupportState,
-  markReadForAdmin,
-  setThreadStatus,
-  saveSupportState,
-} from '../support/supportStorage';
+  adminFetchSupportUnreadCount,
+  adminListSupportThreads,
+  adminSetSupportThreadStatus,
+  fetchThreadMessages,
+  markThreadReadForAdmin,
+  sendSupportMessage,
+} from '../supabase/supportRepo.js';
 
 const formatTime = (iso) => {
   try {
@@ -45,31 +44,50 @@ const downloadCsv = (filename, rows) => {
 };
 
 export default function AdminSupport({ draft, setDraft, onSave }) {
-  const [supportState, setSupportState] = useState(() => loadSupportState());
+  const [threadsState, setThreadsState] = useState([]);
   const [selectedThreadId, setSelectedThreadId] = useState(null);
+  const [selectedMessages, setSelectedMessages] = useState([]);
   const [reply, setReply] = useState('');
   const [statusFilter, setStatusFilter] = useState('open');
   const [query, setQuery] = useState('');
+  const [unreadAdmin, setUnreadAdmin] = useState(0);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setSupportState(loadSupportState());
+    let cancelled = false;
+    const run = async () => {
+      const [threadsRes, unreadRes] = await Promise.all([adminListSupportThreads({ limit: 200 }), adminFetchSupportUnreadCount()]);
+      if (cancelled) return;
+      if (threadsRes.ok) setThreadsState(threadsRes.threads);
+      if (unreadRes.ok) setUnreadAdmin(unreadRes.unread);
+    };
+    void run();
+    const id = window.setInterval(() => void run(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
   }, []);
 
   const threads = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const all = listThreads(supportState);
+    const all = Array.isArray(threadsState) ? threadsState : [];
     const statusFiltered =
       statusFilter === 'all' ? all : all.filter((t) => (statusFilter === 'resolved' ? t.status === 'resolved' : t.status !== 'resolved'));
     if (!q) return statusFiltered;
     return statusFiltered.filter((t) => {
-      const name = (t.userName || '').toLowerCase();
-      const email = (t.userEmail || '').toLowerCase();
+      const name = String(t?.profile?.name || t?.profile?.username || '').toLowerCase();
+      const email = String(t?.profile?.email || '').toLowerCase();
       const id = (t.id || '').toLowerCase();
       return name.includes(q) || email.includes(q) || id.includes(q);
     });
-  }, [supportState, statusFilter, query]);
-  const selected = selectedThreadId ? supportState?.threads?.[selectedThreadId] : null;
-  const unreadAdmin = useMemo(() => getUnreadCountForAdmin(supportState), [supportState]);
+  }, [threadsState, statusFilter, query]);
+
+  const selected = useMemo(() => {
+    const id = String(selectedThreadId || '').trim();
+    if (!id) return null;
+    return (Array.isArray(threadsState) ? threadsState : []).find((t) => t.id === id) || null;
+  }, [threadsState, selectedThreadId]);
 
   const supportCfg = draft?.support || {};
 
@@ -84,71 +102,121 @@ export default function AdminSupport({ draft, setDraft, onSave }) {
   };
 
   const openThread = (id) => {
-    setSelectedThreadId(id);
-    const updated = markReadForAdmin(supportState, { threadId: id });
-    const saved = saveSupportState(updated);
-    setSupportState(saved);
+    const tid = String(id || '').trim();
+    if (!tid || busy) return;
+    setSelectedThreadId(tid);
+    void (async () => {
+      try {
+        setBusy(true);
+        await markThreadReadForAdmin({ threadId: tid });
+        const msgs = await fetchThreadMessages({ threadId: tid });
+        if (msgs.ok) setSelectedMessages(msgs.messages);
+        const unreadRes = await adminFetchSupportUnreadCount();
+        if (unreadRes.ok) setUnreadAdmin(unreadRes.unread);
+      } finally {
+        setBusy(false);
+      }
+    })();
   };
 
   const resolveThread = () => {
-    if (!selectedThreadId) return;
-    const next = setThreadStatus(supportState, { threadId: selectedThreadId, status: 'resolved' });
-    const saved = saveSupportState(next);
-    setSupportState(saved);
+    const tid = String(selectedThreadId || '').trim();
+    if (!tid || busy) return;
+    void (async () => {
+      try {
+        setBusy(true);
+        await adminSetSupportThreadStatus({ threadId: tid, status: 'resolved' });
+        const [threadsRes, unreadRes] = await Promise.all([adminListSupportThreads({ limit: 200 }), adminFetchSupportUnreadCount()]);
+        if (threadsRes.ok) setThreadsState(threadsRes.threads);
+        if (unreadRes.ok) setUnreadAdmin(unreadRes.unread);
+      } finally {
+        setBusy(false);
+      }
+    })();
   };
 
   const reopenThread = () => {
-    if (!selectedThreadId) return;
-    const next = setThreadStatus(supportState, { threadId: selectedThreadId, status: 'open' });
-    const saved = saveSupportState(next);
-    setSupportState(saved);
+    const tid = String(selectedThreadId || '').trim();
+    if (!tid || busy) return;
+    void (async () => {
+      try {
+        setBusy(true);
+        await adminSetSupportThreadStatus({ threadId: tid, status: 'open' });
+        const [threadsRes, unreadRes] = await Promise.all([adminListSupportThreads({ limit: 200 }), adminFetchSupportUnreadCount()]);
+        if (threadsRes.ok) setThreadsState(threadsRes.threads);
+        if (unreadRes.ok) setUnreadAdmin(unreadRes.unread);
+      } finally {
+        setBusy(false);
+      }
+    })();
   };
 
   const sendReply = () => {
     const text = reply.trim();
-    if (!text || !selectedThreadId) return;
-    const next = addMessage(supportState, { threadId: selectedThreadId, from: 'admin', text });
-    const saved = saveSupportState(next);
-    setSupportState(saved);
-    setReply('');
+    const tid = String(selectedThreadId || '').trim();
+    if (!text || !tid || busy) return;
+    void (async () => {
+      try {
+        setBusy(true);
+        const sent = await sendSupportMessage({ threadId: tid, from: 'admin', text });
+        if (!sent.ok) {
+          alert(sent.error || 'Falha ao enviar.');
+          return;
+        }
+        setReply('');
+        const msgs = await fetchThreadMessages({ threadId: tid });
+        if (msgs.ok) setSelectedMessages(msgs.messages);
+        const [threadsRes, unreadRes] = await Promise.all([adminListSupportThreads({ limit: 200 }), adminFetchSupportUnreadCount()]);
+        if (threadsRes.ok) setThreadsState(threadsRes.threads);
+        if (unreadRes.ok) setUnreadAdmin(unreadRes.unread);
+      } finally {
+        setBusy(false);
+      }
+    })();
   };
 
   const exportCsv = () => {
-    const rows = [
-      ['threadId', 'channel', 'userEmail', 'userName', 'status', 'messageAt', 'from', 'text'],
-    ];
-
-    threads.forEach((t) => {
-      (t.messages || []).forEach((m) => {
-        rows.push([t.id, t.channel, t.userEmail, t.userName, t.status, m.at, m.from, m.text]);
-      });
-      if ((t.messages || []).length === 0) {
-        rows.push([t.id, t.channel, t.userEmail, t.userName, t.status, '', '', '']);
+    void (async () => {
+      const rows = [['threadId', 'channel', 'userEmail', 'userName', 'status', 'messageAt', 'from', 'text']];
+      for (const t of threads) {
+        const email = String(t?.profile?.email || '');
+        const name = String(t?.profile?.name || t?.profile?.username || '');
+        const msgsRes = await fetchThreadMessages({ threadId: t.id });
+        const msgs = msgsRes.ok ? msgsRes.messages : [];
+        msgs.forEach((m) => {
+          rows.push([t.id, t.channel, email, name, t.status, m.at, m.from, m.text]);
+        });
+        if (msgs.length === 0) rows.push([t.id, t.channel, email, name, t.status, '', '', '']);
       }
-    });
-
-    downloadCsv(`renda-mais-tickets-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+      downloadCsv(`renda-mais-tickets-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    })();
   };
 
   const exportSelectedCsv = () => {
     if (!selected) return;
+    const email = String(selected?.profile?.email || '');
+    const name = String(selected?.profile?.name || selected?.profile?.username || '');
     const rows = [['threadId', 'channel', 'userEmail', 'userName', 'status', 'messageAt', 'from', 'text']];
-    (selected.messages || []).forEach((m) => {
-      rows.push([selected.id, selected.channel, selected.userEmail, selected.userName, selected.status, m.at, m.from, m.text]);
+    selectedMessages.forEach((m) => {
+      rows.push([selected.id, selected.channel, email, name, selected.status, m.at, m.from, m.text]);
     });
-    if ((selected.messages || []).length === 0) {
-      rows.push([selected.id, selected.channel, selected.userEmail, selected.userName, selected.status, '', '', '']);
-    }
+    if (selectedMessages.length === 0) rows.push([selected.id, selected.channel, email, name, selected.status, '', '', '']);
     downloadCsv(`renda-mais-ticket-${selected.id.replace(/[^a-z0-9:_-]/gi, '_')}.csv`, rows);
   };
 
   const exportSummaryCsv = () => {
-    const rows = [['threadId', 'channel', 'userEmail', 'userName', 'status', 'updatedAt', 'messages', 'unreadAdmin']];
-    threads.forEach((t) => {
-      const unread = t.messages.filter((m) => m.from === 'user' && !m.readByAdmin).length;
-      rows.push([t.id, t.channel, t.userEmail, t.userName, t.status, t.updatedAt, (t.messages || []).length, unread]);
-    });
-    downloadCsv(`renda-mais-tickets-resumo-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    void (async () => {
+      const rows = [['threadId', 'channel', 'userEmail', 'userName', 'status', 'updatedAt', 'messages', 'unreadAdmin']];
+      for (const t of threads) {
+        const email = String(t?.profile?.email || '');
+        const name = String(t?.profile?.name || t?.profile?.username || '');
+        const msgsRes = await fetchThreadMessages({ threadId: t.id });
+        const msgs = msgsRes.ok ? msgsRes.messages : [];
+        const unread = msgs.filter((m) => m.from === 'user' && !m.readByAdmin).length;
+        rows.push([t.id, t.channel, email, name, t.status, t.updatedAt, msgs.length, unread]);
+      }
+      downloadCsv(`renda-mais-tickets-resumo-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    })();
   };
 
   return (
@@ -157,7 +225,7 @@ export default function AdminSupport({ draft, setDraft, onSave }) {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h3 className="text-lg font-black text-gray-800">Status do Suporte</h3>
-            <p className="text-sm text-gray-500">Controle online e fila. As mensagens ficam no localStorage.</p>
+            <p className="text-sm text-gray-500">Controle online e fila.</p>
           </div>
           <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#00FF00]/20 text-green-700">
             Pendências: {unreadAdmin}
@@ -284,9 +352,9 @@ export default function AdminSupport({ draft, setDraft, onSave }) {
                 <div className="p-6 text-sm text-gray-500">Nenhuma conversa ainda.</div>
               )}
               {threads.map((t) => {
-                const unread = t.messages.filter((m) => m.from === 'user' && !m.readByAdmin).length;
-                const last = t.messages[t.messages.length - 1];
                 const resolved = t.status === 'resolved';
+                const title = t?.profile?.name || t?.profile?.username || t?.profile?.email || 'Usuário';
+                const showEmail = Boolean(t?.profile?.email) && (Boolean(t?.profile?.name) || Boolean(t?.profile?.username));
                 return (
                   <button
                     key={t.id}
@@ -296,23 +364,13 @@ export default function AdminSupport({ draft, setDraft, onSave }) {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-black text-gray-800 truncate">{t.userName || t.userEmail || 'Usuário'}</p>
+                        <p className="font-black text-gray-800 truncate">{title}</p>
+                        {showEmail && <p className="text-[11px] text-gray-400 truncate">{t.profile.email}</p>}
                         <p className="text-xs text-gray-500 truncate">{channelLabel(t.channel)}</p>
                         {resolved && <p className="text-[11px] font-bold text-gray-400 mt-1">Resolvido</p>}
                       </div>
-                      {unread > 0 && (
-                        <span className="text-xs font-bold bg-red-500 text-white px-2 py-1 rounded-full">
-                          {unread}
-                        </span>
-                      )}
+                      <p className="text-[11px] text-gray-400 whitespace-nowrap">{formatTime(t.updatedAt)}</p>
                     </div>
-                    {last && (
-                      <p className="text-xs text-gray-500 mt-2 line-clamp-2">
-                        {last.from === 'admin' ? 'Admin: ' : 'Usuário: '}
-                        {last.text}
-                      </p>
-                    )}
-                    <p className="text-[11px] text-gray-400 mt-2">{last ? formatTime(last.at) : ''}</p>
                   </button>
                 );
               })}
@@ -334,7 +392,8 @@ export default function AdminSupport({ draft, setDraft, onSave }) {
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <p className="text-xs text-gray-500">{channelLabel(selected.channel)}</p>
-                      <p className="font-black text-gray-800">{selected.userName || selected.userEmail}</p>
+                      <p className="font-black text-gray-800">{selected?.profile?.name || selected?.profile?.username || selected?.profile?.email || 'Usuário'}</p>
+                      {selected?.profile?.email && <p className="text-[11px] text-gray-400 truncate">{selected.profile.email}</p>}
                       <p className="text-xs text-gray-400 mt-1">Thread: {selected.id}</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -361,7 +420,7 @@ export default function AdminSupport({ draft, setDraft, onSave }) {
 
                 <div className="flex-1 max-h-[380px] overflow-y-auto p-4 bg-gray-50">
                   <div className="space-y-3">
-                    {selected.messages.map((m) => (
+                    {selectedMessages.map((m) => (
                       <div key={m.id} className={`flex ${m.from === 'admin' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm border ${m.from === 'admin' ? 'bg-[#00FF00]/20 border-[#00FF00]/30 text-gray-900' : 'bg-white border-gray-200 text-gray-800'}`}>
                           <p className="text-sm whitespace-pre-wrap">{m.text}</p>
@@ -386,13 +445,14 @@ export default function AdminSupport({ draft, setDraft, onSave }) {
                     <button
                       type="button"
                       onClick={sendReply}
-                      className="px-5 py-3 rounded-xl bg-[#00FF00] text-black font-black hover:bg-green-400 inline-flex items-center gap-2"
+                      className="px-5 py-3 rounded-xl bg-[#00FF00] text-black font-black hover:bg-green-400 inline-flex items-center gap-2 disabled:opacity-60"
+                      disabled={!selected || busy}
                     >
                       <SendIcon size={18} />
                       Enviar
                     </button>
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-2">A resposta incrementa o sino de notificações do usuário.</p>
+                  <p className="text-[11px] text-gray-500 mt-2">As mensagens são registradas no Supabase.</p>
                 </div>
               </div>
             )}

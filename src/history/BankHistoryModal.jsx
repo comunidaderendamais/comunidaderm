@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Maximize2, Minimize2, CalendarDays, Clock } from 'lucide-react';
-import { getBankDayHistory, getTodayYmd, getYesterdayYmd, loadHistoryState, normalizeYmd } from './historyStorage';
 import { getT } from '../i18n/i18n.js';
+import { fetchBankDayHistory, getTodayYmd, getYesterdayYmd, normalizeYmd } from '../supabase/bankHistoryRepo.js';
 
 const chipBase = 'px-3 py-2 rounded-xl text-sm font-bold border transition';
 
@@ -42,11 +42,23 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t,
   const [selectedDate, setSelectedDate] = useState(getTodayYmd());
   const [lightboxUrl, setLightboxUrl] = useState(null);
   const [tab, setTab] = useState('video');
-  const historyState = useMemo(() => loadHistoryState(), [isOpen]);
-
-  const day = useMemo(() => getBankDayHistory(historyState, bankId, selectedDate), [historyState, bankId, selectedDate]);
+  const [day, setDay] = useState({ videos: [], images: [], note: '' });
   const hasVideo = (day?.videos || []).length > 0;
   const hasImages = (day?.images || []).length > 0;
+
+  useEffect(() => {
+    if (!isOpen || !bankId || !selectedDate) return;
+    let cancelled = false;
+    const run = async () => {
+      const res = await fetchBankDayHistory({ bankId, ymd: selectedDate });
+      if (cancelled || !res.ok) return;
+      setDay(res.entry || { videos: [], images: [], note: '' });
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, bankId, selectedDate]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,6 +66,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t,
     setLightboxUrl(null);
     setSelectedDate(getTodayYmd());
     setTab('video');
+    setDay({ videos: [], images: [], note: '' });
   }, [isOpen]);
 
   useEffect(() => {
