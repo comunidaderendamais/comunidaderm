@@ -378,7 +378,7 @@ const AuthFlow = ({ onLogin, lang, setLang }) => {
       <div className="w-full max-w-md bg-[#1A1A1A] rounded-2xl shadow-2xl p-8 border border-[#8A2BE2]">
         <div className="text-center mb-8">
           <div className="mx-auto mb-5 flex h-28 w-28 items-center justify-center rounded-2xl border border-[#8A2BE2] bg-white/5 shadow-[0_0_35px_rgba(0,255,0,0.15)]">
-            <img src="LOGO RENDA MAIS 05 BRANCO.png" alt="Renda Mais" className="h-20 w-auto object-contain" />
+            <img src="/LOGO RENDA MAIS 05 BRANCO.png" alt="Renda Mais" className="h-20 w-auto object-contain" />
           </div>
           <h1 className="text-2xl font-black tracking-wide text-white">RENDA MAIS</h1>
           <p className="mt-2 text-gray-400">{isLogin ? t.login : t.register}</p>
@@ -486,7 +486,7 @@ const Sidebar = ({ isOpen, setIsOpen, currentView, setCurrentView, lang, onLogou
         <div className="p-5 flex justify-between items-center border-b border-gray-800 gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#8A2BE2] bg-white/5 shadow-[0_0_20px_rgba(0,255,0,0.12)]">
-              <img src="LOGO RENDA MAIS 05 BRANCO.png" alt="Renda Mais" className="h-10 w-auto object-contain" />
+              <img src="/LOGO RENDA MAIS 05 BRANCO.png" alt="Renda Mais" className="h-10 w-auto object-contain" />
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-black tracking-[0.25em] text-white">RENDA MAIS</p>
