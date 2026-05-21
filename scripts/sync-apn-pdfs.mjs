@@ -6,7 +6,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const webDir = path.resolve(__dirname, '..');
-const srcDir = path.resolve(webDir, '..', 'apn');
 const dstDir = path.resolve(webDir, 'public', 'apn');
 
 await fs.mkdir(dstDir, { recursive: true });
@@ -18,20 +17,45 @@ const mappings = [
   { from: 'APN_RENDA_MAIS_FR-RANÇA.pdf', to: 'APN_RENDA_MAIS_FR-FR.pdf' },
 ];
 
+const srcDirCandidates = [
+  path.resolve(webDir, '..', 'apn'),
+  path.resolve(webDir, 'apn'),
+  path.resolve(webDir, 'public', 'apn'),
+];
+
+const exists = async (p) => {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const missing = [];
 
 await Promise.all(
   mappings.map(async ({ from, to }) => {
-    const src = path.resolve(srcDir, from);
     const dst = path.resolve(dstDir, to);
-    try {
-      await fs.copyFile(src, dst);
-    } catch {
-      missing.push(from);
+
+    if (await exists(dst)) {
+      return;
     }
+
+    for (const candidateDir of srcDirCandidates) {
+      const src = path.resolve(candidateDir, from);
+      if (await exists(src)) {
+        await fs.copyFile(src, dst);
+        return;
+      }
+    }
+
+    missing.push(from);
   })
 );
 
 if (missing.length) {
-  throw new Error(`APN PDFs ausentes em ${srcDir}: ${missing.join(', ')}`);
+  throw new Error(
+    `APN PDFs ausentes. Adicione os arquivos em "${dstDir}" (recomendado para Cloudflare Pages) ou em uma pasta "apn" no nivel acima do projeto. Faltando: ${missing.join(', ')}`
+  );
 }
