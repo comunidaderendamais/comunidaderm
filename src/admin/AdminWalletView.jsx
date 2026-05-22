@@ -19,6 +19,21 @@ const formatDateTime = (iso) => {
   }
 };
 
+const isSettledTransactionStatus = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['concluído', 'concluido', 'confirmado', 'creditado'].includes(normalized);
+};
+
+const lotSourceMatchesPayment = (lot, paymentId = '', depositTxId = '') => {
+  const source = lot?.source || {};
+  const sourcePaymentId = String(source?.paymentId || '').trim();
+  const sourceDepositTxId = String(source?.depositTxId || '').trim();
+  return (
+    (paymentId && sourcePaymentId === String(paymentId || '').trim()) ||
+    (depositTxId && sourceDepositTxId === String(depositTxId || '').trim())
+  );
+};
+
 const matchUser = (u, q) => {
   const s = String(q || '').trim().toLowerCase();
   if (!s) return true;
@@ -176,6 +191,10 @@ export default function AdminWalletView({ config }) {
   const verifyDeposit = async (item) => {
     try {
       if (busy) return;
+      if (isSettledTransactionStatus(item?.status)) {
+        alert('Este depósito já está concluído.');
+        return;
+      }
       setBusy(true);
       const paymentId = String(paymentIdByTx[item.id] ?? item.paymentId ?? '').trim();
       if (!paymentId) {
@@ -188,6 +207,14 @@ export default function AdminWalletView({ config }) {
         return;
       }
       const u = stateRes.user;
+      const existingLots = Array.isArray(u?.quotaLots) ? u.quotaLots : [];
+      const alreadyApplied = existingLots.some((lot) => lotSourceMatchesPayment(lot, paymentId, item.id));
+      if (alreadyApplied) {
+        setRefresh((s) => s + 1);
+        await loadRows();
+        alert('Este depósito já está concluído.');
+        return;
+      }
       const txs = Array.isArray(u?.transactions) ? u.transactions : [];
       const nextTxs = txs.map((t) =>
         String(t?.id || '') === String(item.id) ? { ...t, meta: { ...(t?.meta || {}), paymentId } } : t
@@ -394,9 +421,9 @@ export default function AdminWalletView({ config }) {
                     <div className="lg:col-span-4 flex items-end gap-2">
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={busy || isSettledTransactionStatus(d?.status)}
                         onClick={() => verifyDeposit(d)}
-                        className={`w-full px-4 py-3 rounded-xl font-black ${busy ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#00FF00] text-black hover:bg-green-400'}`}
+                        className={`w-full px-4 py-3 rounded-xl font-black ${busy || isSettledTransactionStatus(d?.status) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#00FF00] text-black hover:bg-green-400'}`}
                       >
                         Verificar
                       </button>

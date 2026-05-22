@@ -48,8 +48,8 @@ const mapTxRowToTx = (row) => {
     kind: String(row?.kind || meta?.kind || ''),
     type: String(row?.type || meta?.type || ''),
     amount,
-    payment: meta?.payment || row?.payment || null,
-    status: meta?.status || row?.status || null,
+    payment: row?.payment || meta?.payment || null,
+    status: row?.status || meta?.status || null,
     meta,
   };
 };

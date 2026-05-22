@@ -37,6 +37,7 @@ import QuotaLotEarningsModal from './wallet/QuotaLotEarningsModal.jsx';
 import QuotasOverviewSection from './quota/QuotasOverviewSection.jsx';
 import QuotaPurchaseCard from './quota/QuotaPurchaseCard.jsx';
 import QuotaSponsorshipSummaryCard from './quota/QuotaSponsorshipSummaryCard.jsx';
+import QuotaPurchaseHistorySection from './quota/QuotaPurchaseHistorySection.jsx';
 import WalletOverviewSection from './wallet/WalletOverviewSection.jsx';
 import ReportsOverviewSection from './reports/ReportsOverviewSection.jsx';
 import HomeOverviewSection, { HomeRecentEarningsSection } from './home/HomeOverviewSection.jsx';
@@ -73,6 +74,11 @@ const stableSerialize = (value) => {
   } catch {
     return '';
   }
+};
+
+const isSettledTransactionStatus = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['concluído', 'concluido', 'confirmado', 'creditado'].includes(normalized);
 };
 
 const buildAdminConfigFromSupabase = ({ config, banks }) => {
@@ -172,6 +178,21 @@ const buildNowpaymentsSnapshot = (payment) => {
 
 const isNowpaymentsConflictError = (message) =>
   /no unique or exclusion constraint matching the on conflict specification/i.test(String(message || ''));
+
+const lotSourceMatchesDeposit = (lot, refs = {}, depositTxId = '') => {
+  const source = lot?.source || {};
+  const sourceDepositTxId = String(source?.depositTxId || '').trim();
+  const sourcePaymentId = String(source?.paymentId || '').trim();
+  const sourceInvoiceId = String(source?.invoiceId || '').trim();
+  const sourceOrderId = String(source?.orderId || '').trim();
+
+  return (
+    (depositTxId && sourceDepositTxId === String(depositTxId || '').trim()) ||
+    (refs.paymentId && sourcePaymentId === String(refs.paymentId || '').trim()) ||
+    (refs.invoiceId && sourceInvoiceId === String(refs.invoiceId || '').trim()) ||
+    (refs.orderId && sourceOrderId === String(refs.orderId || '').trim())
+  );
+};
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -753,30 +774,6 @@ const HomeView = ({ lang, adminConfig, publicStats, user, teamSummary, onOpenBan
     teamEarningsAmount > 0 ||
     availableAmount > 0 ||
     recentItems.length > 0;
-  const handleOpenHowToJoin = () =>
-    onOpenApn?.({
-      page: 5,
-      title: `${t.apnPresentation} • ${t.apnHowToJoin}`,
-      shortcuts: [
-        { label: t.apnHowToJoin, page: 5 },
-        { label: t.apnBanks, page: 9 },
-        { label: t.apnTeam, page: 10 },
-        { label: t.apnResidual, page: 11 },
-        { label: t.apnElitePool, page: 12 },
-      ],
-    });
-  const handleOpenBankSystem = () =>
-    onOpenApn?.({
-      page: 9,
-      title: `${t.apnPresentation} • ${t.apnBanksSystem}`,
-      shortcuts: [
-        { label: t.apnHowToJoin, page: 5 },
-        { label: t.apnBanks, page: 9 },
-        { label: t.apnTeam, page: 10 },
-        { label: t.apnResidual, page: 11 },
-        { label: t.apnElitePool, page: 12 },
-      ],
-    });
 
   return (
     <div className="p-4 min-[540px]:p-6 space-y-6 max-w-7xl mx-auto">
@@ -789,8 +786,7 @@ const HomeView = ({ lang, adminConfig, publicStats, user, teamSummary, onOpenBan
         rankTitle={rankTitle}
         rankDesc={rankDesc}
         cards={cards}
-        onOpenHowToJoin={handleOpenHowToJoin}
-        onOpenBankSystem={handleOpenBankSystem}
+        onOpenQuotas={() => setCurrentView('quotas')}
       />
 
       {/* Forex Operations Showcase (Simulation) */}
@@ -1136,53 +1132,15 @@ const QuotasView = ({ user, setUser, adminConfig, publicStats, onBuy, onOpenApn,
         })}
       </div>
 
-      <div className="mt-8 bg-white rounded-[28px] shadow-[0_24px_70px_-40px_rgba(15,23,42,0.22)] border border-gray-200 overflow-hidden">
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-bold text-gray-800">{t.quotasHistoryTitle}</h3>
-          <p className="text-sm text-gray-500 mt-1">{t.quotasHistorySubtitle}</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 text-gray-500 text-sm">
-                <th className="p-4">{t.quotasTableDate}</th>
-                <th className="p-4">{t.quotasTableType}</th>
-                <th className="p-4">{t.quotasTablePayment}</th>
-                <th className="p-4">{t.quotasTableStatus}</th>
-                <th className="p-4 text-right">{t.quotasTableValue}</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm text-gray-700">
-              {purchaseTransactions
-                .slice(0, 25)
-                .map((tx) => (
-                  <tr key={tx.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="p-4 whitespace-nowrap">{formatDateTime(tx.at, lang)}</td>
-                    <td className="p-4">{translateTransactionType(tx.type, t)}</td>
-                    <td className="p-4">{tx.payment || '—'}</td>
-                    <td className="p-4">
-                      <StatusBadge className="rounded text-xs px-2 py-1 font-bold">{getStatusLabel(tx.status, t)}</StatusBadge>
-                    </td>
-                    <td className="p-4 text-right font-bold">{formatMoneyUsd(tx.amount, lang)}</td>
-                  </tr>
-                ))}
-              {purchaseTransactions.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-10">
-                    <div className="mx-auto max-w-xl">
-                      <EmptyStateCard
-                        icon={PieChart}
-                        title={t.quotasHistoryEmptyTitle}
-                        description={t.quotasHistoryEmptyDesc}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <QuotaPurchaseHistorySection
+        t={t}
+        transactions={purchaseTransactions}
+        lang={lang}
+        formatDateTime={formatDateTime}
+        formatMoneyUsd={formatMoneyUsd}
+        translateTransactionType={translateTransactionType}
+        getStatusLabel={getStatusLabel}
+      />
       
         <div className="mt-8 text-center text-sm text-gray-500">
           {t.quotasActivationHint}
@@ -1454,9 +1412,20 @@ const WalletView = ({ setCurrentView, user, setUser, adminConfig, lang }) => {
       setVerifyBusy(true);
       const txs = Array.isArray(currentUser?.transactions) ? currentUser.transactions : [];
       const tx = txs.find((t) => String(t?.id || '') === String(txId));
+      if (isSettledTransactionStatus(tx?.status)) {
+        alert(t.statusCompleted || 'Pagamento confirmado');
+        return;
+      }
       const refs = getDepositReference(tx);
       if (!refs.paymentId && !refs.invoiceId && !refs.orderId) {
         alert(t.depositCodeRequired);
+        return;
+      }
+      const existingLots = Array.isArray(currentUser?.quotaLots) ? currentUser.quotaLots : [];
+      const alreadyApplied = existingLots.some((lot) => lotSourceMatchesDeposit(lot, refs, txId));
+      if (alreadyApplied) {
+        await refreshUserFromServer();
+        alert(t.statusCompleted || 'Pagamento confirmado');
         return;
       }
       let paymentStatus = null;
@@ -1847,9 +1816,9 @@ const WalletView = ({ setCurrentView, user, setUser, adminConfig, lang }) => {
                         </button>
                         <button
                           type="button"
-                          disabled={verifyBusy || reopenBusy}
+                          disabled={verifyBusy || reopenBusy || isSettledTransactionStatus(tx?.status)}
                           onClick={() => verifyDeposit(tx.id)}
-                          className={`w-full px-4 py-3 rounded-xl font-black ${verifyBusy || reopenBusy ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#00FF00] text-black hover:bg-green-400'}`}
+                          className={`w-full px-4 py-3 rounded-xl font-black ${verifyBusy || reopenBusy || isSettledTransactionStatus(tx?.status) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#00FF00] text-black hover:bg-green-400'}`}
                         >
                           {t.refresh}
                         </button>
@@ -2687,6 +2656,17 @@ const App = () => {
   const tEff = getT(effectiveLang);
 
   useEffect(() => {
+    const handleAppNavigate = (event) => {
+      const nextView = String(event?.detail?.view || '').trim();
+      if (!nextView) return;
+      setCurrentView(nextView);
+      setSidebarOpen(false);
+    };
+    window.addEventListener('app:navigate', handleAppNavigate);
+    return () => window.removeEventListener('app:navigate', handleAppNavigate);
+  }, []);
+
+  useEffect(() => {
     persistLang(lang);
   }, [lang]);
 
@@ -3136,46 +3116,48 @@ const App = () => {
 
         {/* Floating Support Button */}
         <div className="fixed bottom-6 right-6 z-40 pointer-events-none">
-          <div className={`absolute bottom-16 right-0 ${supportMenuOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'} transition-all flex flex-col items-end gap-2 duration-300`}>
-            <button
-              type="button"
-              onClick={() => {
-                setSupportMenuOpen(false);
-                setSupportModal({ open: true, channel: 'finance', name: tEff.supportChannelFinance });
-              }}
-              className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
-            >
-              {tEff.supportChannelFinance}
-              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${adminConfig?.support?.finance?.online ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                {adminConfig?.support?.finance?.online ? tEff.supportOnline : tEff.supportOffline}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSupportMenuOpen(false);
-                setSupportModal({ open: true, channel: 'tech', name: tEff.supportChannelTech });
-              }}
-              className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
-            >
-              {tEff.supportChannelTech}
-              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${adminConfig?.support?.tech?.online ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                {adminConfig?.support?.tech?.online
-                  ? tEff.supportOnline
-                  : fillTemplate(tEff.queueTemplate, { count: Number(adminConfig?.support?.tech?.queue || 0) })}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSupportMenuOpen(false);
-                setFaqOpen(true);
-              }}
-              className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
-            >
-              {tEff.faqButton}
-            </button>
-          </div>
+          {supportMenuOpen ? (
+            <div className="absolute bottom-16 right-0 flex translate-y-0 flex-col items-end gap-2 transition-all duration-300 pointer-events-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setSupportMenuOpen(false);
+                  setSupportModal({ open: true, channel: 'finance', name: tEff.supportChannelFinance });
+                }}
+                className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+              >
+                {tEff.supportChannelFinance}
+                <span className={`px-2 py-0.5 rounded-full text-xs font-black ${adminConfig?.support?.finance?.online ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                  {adminConfig?.support?.finance?.online ? tEff.supportOnline : tEff.supportOffline}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupportMenuOpen(false);
+                  setSupportModal({ open: true, channel: 'tech', name: tEff.supportChannelTech });
+                }}
+                className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+              >
+                {tEff.supportChannelTech}
+                <span className={`px-2 py-0.5 rounded-full text-xs font-black ${adminConfig?.support?.tech?.online ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                  {adminConfig?.support?.tech?.online
+                    ? tEff.supportOnline
+                    : fillTemplate(tEff.queueTemplate, { count: Number(adminConfig?.support?.tech?.queue || 0) })}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupportMenuOpen(false);
+                  setFaqOpen(true);
+                }}
+                className="pointer-events-auto bg-white px-4 py-2 rounded-xl shadow-lg border border-gray-200 text-sm font-black flex items-center gap-2 hover:bg-gray-50"
+              >
+                {tEff.faqButton}
+              </button>
+            </div>
+          ) : null}
           
           <button
             type="button"

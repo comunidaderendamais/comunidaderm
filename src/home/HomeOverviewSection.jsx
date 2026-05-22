@@ -3,6 +3,7 @@ import {
   BookOpen,
   CircleDollarSign,
   FileText,
+  PieChart,
   ShieldCheck,
   Sparkles,
   TrendingUp,
@@ -54,9 +55,15 @@ export default function HomeOverviewSection({
   rankTitle,
   rankDesc,
   cards,
-  onOpenHowToJoin,
-  onOpenBankSystem,
+  onOpenQuotas,
 }) {
+  const handleOpenQuotas = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('app:navigate', { detail: { view: 'quotas' } }));
+    }
+    onOpenQuotas?.();
+  };
+
   return (
     <div className="space-y-6">
       <div className="relative overflow-hidden rounded-[32px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(138,43,226,0.12),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(0,255,0,0.08),transparent_26%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-6 shadow-[0_28px_80px_-48px_rgba(15,23,42,0.35)] sm:p-8">
@@ -80,36 +87,33 @@ export default function HomeOverviewSection({
               {hasMovement ? t.homeHeroActiveDesc : t.homeHeroEmptyDesc}
             </p>
 
-            <div className="mt-6 rounded-[24px] border border-white/80 bg-white/80 p-4 shadow-[0_20px_50px_-38px_rgba(15,23,42,0.35)] backdrop-blur">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600">
-                    <BookOpen className="h-5 w-5" />
+            <div className="mt-5 rounded-[22px] border border-white/80 bg-white/80 p-3.5 shadow-[0_20px_50px_-38px_rgba(15,23,42,0.35)] backdrop-blur sm:mt-6 sm:rounded-[24px] sm:p-4">
+              <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-start gap-2.5 sm:gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 sm:h-11 sm:w-11">
+                    <PieChart className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
                   </span>
                   <div>
-                    <h3 className="text-base font-black text-gray-900">{t.homeProjectPresentationTitle}</h3>
-                    <p className="mt-1 text-sm leading-6 text-gray-500">{t.homeProjectPresentationDesc}</p>
+                    <h3 className="text-[15px] font-black text-gray-900 sm:text-base">{t.quotas}</h3>
+                    <p className="mt-0.5 text-[13px] leading-5 text-gray-500 sm:mt-1 sm:text-sm sm:leading-6">{t.homeQuotaCtaHint}</p>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={onOpenHowToJoin}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800"
-                  >
-                    {t.homeHowToJoinPdf}
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onOpenBankSystem}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-black text-gray-900 transition hover:bg-gray-50"
-                  >
-                    {t.homeBankSystemPdf}
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenQuotas}
+                  className="group flex w-full flex-col gap-2.5 rounded-[20px] bg-[linear-gradient(135deg,#020617_0%,#111827_58%,#1f2937_100%)] px-4 py-3.5 text-left text-white shadow-[0_24px_60px_-28px_rgba(15,23,42,0.85)] ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:shadow-[0_30px_70px_-26px_rgba(15,23,42,0.95)] sm:w-auto sm:min-w-[320px] sm:gap-3 sm:rounded-[22px] sm:px-5 sm:py-4"
+                >
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-emerald-300/90">{t.quotas}</span>
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 flex-1 whitespace-nowrap text-[12px] font-black text-white min-[360px]:text-[13px] sm:text-[15px]">
+                      {t.buyQuota}
+                    </span>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/12 bg-white/10 text-white transition group-hover:bg-white/14">
+                      <ArrowRight className="h-4 w-4" />
+                    </span>
+                  </span>
+                </button>
               </div>
             </div>
           </div>

@@ -1,128 +1,54 @@
-import { ArrowRight, BookOpen, Coins, Sparkles, Wallet } from 'lucide-react';
-
-const MetricCard = ({ icon: Icon, label, value, hint, accentClass }) => (
-  <div className="rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.25)] backdrop-blur">
-    <div className="flex items-center gap-3">
-      <span className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${accentClass}`.trim()}>
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm font-black text-gray-900">{label}</p>
-        <p className="mt-1 text-xs leading-5 text-gray-500">{hint}</p>
-      </div>
-    </div>
-    <p className="mt-5 text-3xl font-black tracking-tight text-gray-950">{value}</p>
-  </div>
-);
+import { ArrowRight, Sparkles } from 'lucide-react';
 
 export default function QuotasOverviewSection({
   t,
   hasMovement,
-  soldSummary,
-  availableGlobalSummary,
-  holdingsSummary,
   onOpenHowToJoin,
   onOpenBanks,
 }) {
   return (
-    <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-[32px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(138,43,226,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(0,255,0,0.1),transparent_26%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-6 shadow-[0_28px_80px_-48px_rgba(15,23,42,0.35)] sm:p-8">
-        <div className="pointer-events-none absolute -left-16 top-0 h-40 w-40 rounded-full bg-[#8A2BE2]/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 right-0 h-40 w-40 rounded-full bg-[#00FF00]/10 blur-3xl" />
+    <div>
+      <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(138,43,226,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(0,255,0,0.1),transparent_26%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-[0_28px_80px_-48px_rgba(15,23,42,0.35)] sm:p-6 lg:rounded-[32px] lg:p-8">
+        <div className="pointer-events-none absolute -left-16 top-0 h-32 w-32 rounded-full bg-[#8A2BE2]/10 blur-3xl sm:h-36 sm:w-36 lg:h-40 lg:w-40" />
+        <div className="pointer-events-none absolute -bottom-16 right-0 h-32 w-32 rounded-full bg-[#00FF00]/10 blur-3xl sm:h-36 sm:w-36 lg:h-40 lg:w-40" />
 
-        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.9fr)] xl:items-start">
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
-                <Sparkles className="h-4 w-4" />
-                {hasMovement ? t.quotasHeroActiveBadge : t.quotasHeroEmptyBadge}
-              </span>
-              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
-                {t.quotasHeroSupportBadge}
-              </span>
-            </div>
-
-            <h2 className="mt-5 text-3xl font-black tracking-tight text-gray-950 sm:text-4xl">{t.quotasPageTitle}</h2>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-600 sm:text-base">
-              {hasMovement ? t.quotasHeroActiveDesc : t.quotasHeroEmptyDesc}
-            </p>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={onOpenHowToJoin}
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800"
-              >
-                {t.quotasHowToJoinPdf}
-                <ArrowRight className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={onOpenBanks}
-                className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-black text-gray-900 transition hover:bg-gray-50"
-              >
-                {t.quotasBanksPdf}
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-6 rounded-[24px] border border-blue-100 bg-blue-50/80 p-4 shadow-[0_20px_50px_-38px_rgba(37,99,235,0.25)] backdrop-blur">
-              <div className="flex items-start gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-600">
-                  <BookOpen className="h-5 w-5" />
-                </span>
-                <div>
-                  <p className="text-sm font-black text-blue-900">
-                    {t.quotasRuleLabel} {t.quotasRuleText}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-blue-800/80">{t.quotasCycleProjectionHint}</p>
-                </div>
-              </div>
-            </div>
+        <div className="relative">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-violet-700 sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[11px]">
+              <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              {hasMovement ? t.quotasHeroActiveBadge : t.quotasHeroEmptyBadge}
+            </span>
+            <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700 sm:px-3 sm:py-1.5 sm:text-[11px]">
+              {t.quotasHeroSupportBadge}
+            </span>
           </div>
 
-          <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))] xl:grid-cols-1">
-            <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.4)] backdrop-blur">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{t.quotasHeroSoldLabel}</p>
-              <p className="mt-3 text-2xl font-black text-[#8A2BE2]">{soldSummary}</p>
-              <p className="mt-2 text-xs leading-5 text-gray-500">{t.quotasHeroSoldHint}</p>
-            </div>
-            <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.4)] backdrop-blur">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{t.quotasHeroAvailableLabel}</p>
-              <p className="mt-3 text-2xl font-black text-gray-950">{availableGlobalSummary}</p>
-              <p className="mt-2 text-xs leading-5 text-gray-500">{t.quotasHeroAvailableHint}</p>
-            </div>
-            <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.4)] backdrop-blur">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{t.quotasHeroHoldingsLabel}</p>
-              <p className="mt-3 text-2xl font-black text-gray-950">{holdingsSummary}</p>
-              <p className="mt-2 text-xs leading-5 text-gray-500">{t.quotasHeroHoldingsHint}</p>
-            </div>
+          <h2 className="mt-4 whitespace-nowrap text-[1.35rem] font-black tracking-tight text-gray-950 sm:mt-5 sm:text-3xl lg:text-4xl">
+            {t.quotasPageTitle}
+          </h2>
+          <p className="mt-2.5 max-w-3xl text-sm leading-6 text-gray-600 sm:mt-3 sm:text-[15px] lg:text-base">
+            {hasMovement ? t.quotasHeroActiveDesc : t.quotasHeroEmptyDesc}
+          </p>
+
+          <div className="mt-5 flex flex-col gap-2.5 sm:mt-6 sm:flex-col sm:gap-3 md:max-w-[420px] lg:max-w-none lg:flex-row lg:flex-wrap lg:items-center">
+            <button
+              type="button"
+              onClick={onOpenHowToJoin}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-[0_22px_50px_-28px_rgba(15,23,42,0.75)] transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-[0_28px_60px_-28px_rgba(15,23,42,0.85)] lg:w-auto lg:min-w-[220px] lg:justify-between lg:px-5"
+            >
+              {t.quotasHowToJoinPdf}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenBanks}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/92 px-4 py-3 text-sm font-black text-gray-900 shadow-[0_20px_45px_-34px_rgba(15,23,42,0.35)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-[0_24px_55px_-34px_rgba(15,23,42,0.45)] lg:w-auto lg:min-w-[220px] lg:justify-between lg:px-5"
+            >
+              {t.quotasBanksPdf}
+              <ArrowRight className="h-4 w-4" />
+            </button>
           </div>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 min-[540px]:grid-cols-2 xl:grid-cols-3">
-        <MetricCard
-          icon={Coins}
-          label={t.quotasHeroSoldLabel}
-          value={soldSummary}
-          hint={t.quotasMetricSoldHint}
-          accentClass="border-violet-100 bg-violet-50 text-violet-600"
-        />
-        <MetricCard
-          icon={Sparkles}
-          label={t.quotasHeroAvailableLabel}
-          value={availableGlobalSummary}
-          hint={t.quotasMetricAvailableHint}
-          accentClass="border-emerald-100 bg-emerald-50 text-emerald-600"
-        />
-        <MetricCard
-          icon={Wallet}
-          label={t.quotasHeroHoldingsLabel}
-          value={holdingsSummary}
-          hint={t.quotasMetricHoldingsHint}
-          accentClass="border-sky-100 bg-sky-50 text-sky-600"
-        />
       </div>
     </div>
   );
