@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBankByQuotaKey } from './adminStorage';
-import { adminGetUserNetwork, adminGetUserState, adminSearchUsers } from '../supabase/adminRepo.js';
+import { adminGetUserNetwork, adminGetUserState, adminGrantSponsorship, adminSearchUsers } from '../supabase/adminRepo.js';
 import { getQuotaPlanPresentation } from '../quota/quotaPresentation.js';
+import AdminUserSponsorshipPanel from './AdminUserSponsorshipPanel.jsx';
 
 const safeNum = (v) => {
   const n = Number(v);
@@ -38,6 +39,8 @@ export default function AdminUserView({ config }) {
   const [loading, setLoading] = useState(false);
   const [selectedFull, setSelectedFull] = useState(null);
   const [networkLevels, setNetworkLevels] = useState([]);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [sponsorshipBusy, setSponsorshipBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +113,24 @@ export default function AdminUserView({ config }) {
     return () => {
       cancelled = true;
     };
-  }, [selected?.id]);
+  }, [selected?.id, reloadTick]);
+
+  const handleGrantSponsorship = async ({ planKey, units, note }) => {
+    if (!selected?.id) return { ok: false, error: 'Selecione um usuário.' };
+    setSponsorshipBusy(true);
+    try {
+      const res = await adminGrantSponsorship({
+        userId: selected.id,
+        planKey,
+        units,
+        note,
+      });
+      if (res.ok) setReloadTick((value) => value + 1);
+      return res;
+    } finally {
+      setSponsorshipBusy(false);
+    }
+  };
 
   const selectedTotals = useMemo(() => {
     const base = selectedFull || selected;
@@ -409,6 +429,13 @@ export default function AdminUserView({ config }) {
                   )}
                 </div>
               </div>
+
+              <AdminUserSponsorshipPanel
+                user={shown}
+                transactions={shown?.transactions}
+                onGrantSponsorship={handleGrantSponsorship}
+                busy={sponsorshipBusy}
+              />
 
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="p-5 border-b border-gray-100">

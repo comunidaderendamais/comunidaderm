@@ -20,12 +20,13 @@ import {
 } from './quota/quotaEngine.js';
 import { RANKS } from './team/teamEngine.js';
 import TeamOverviewSection from './team/TeamOverviewSection.jsx';
+import TeamNetworkLevelsCard from './team/TeamNetworkLevelsCard.jsx';
 import { formatTeamMoney } from './team/teamViewFormatters.js';
 import ApnPdfModal from './apn/ApnPdfModal.jsx';
 import { calcElitePool, calcElitePayoutPerSlot, computeEliteBoard, ELITE_CATEGORIES, getEliteCategoryForRank } from './elite/eliteEngine.js';
 import { createNowpaymentPayment, fetchNowpaymentStatus } from './payments/nowpaymentsClient.js';
 import { buildCheckoutUrlFromInvoiceId, getPaymentSnapshotSummary, hasHostedCheckoutAvailable, normalizeNowpaymentsPayment } from './payments/nowpaymentsPresentation.js';
-import { calcWithdrawNet, WITHDRAW_FEE_USD } from './payments/walletEngine.js';
+import { calcWithdrawNet, settleNowpaymentsDeposit, WITHDRAW_FEE_USD } from './payments/walletEngine.js';
 import NowpaymentsPaymentModal from './payments/NowpaymentsPaymentModal.jsx';
 import InfoRow from './components/ui/InfoRow.jsx';
 import StatusBadge from './components/ui/StatusBadge.jsx';
@@ -35,6 +36,7 @@ import QuotaLotProgressCard from './wallet/QuotaLotProgressCard.jsx';
 import QuotaLotEarningsModal from './wallet/QuotaLotEarningsModal.jsx';
 import QuotasOverviewSection from './quota/QuotasOverviewSection.jsx';
 import QuotaPurchaseCard from './quota/QuotaPurchaseCard.jsx';
+import QuotaSponsorshipSummaryCard from './quota/QuotaSponsorshipSummaryCard.jsx';
 import WalletOverviewSection from './wallet/WalletOverviewSection.jsx';
 import ReportsOverviewSection from './reports/ReportsOverviewSection.jsx';
 import HomeOverviewSection, { HomeRecentEarningsSection } from './home/HomeOverviewSection.jsx';
@@ -45,9 +47,9 @@ import { getAuthActionPageUrl } from './supabase/authRedirect.js';
 import { buildSupabaseMetadata, getSupabaseAuthErrorMessage, hydrateUserFromSupabaseAuth } from './supabase/authBridge.js';
 import { loadMyProfileAndWallets, saveMyWallets } from './supabase/profileRepo.js';
 import { getReferrerProfile, isEmailAvailable, isUsernameAvailable } from './supabase/publicLookup.js';
-import { attachNowpaymentsSnapshot, confirmMyNowpaymentsPayment, createMyPurchase, fetchMyState, renewMyLot, requestMyDesistance, requestMyWithdraw } from './supabase/stateSync.js';
+import { attachNowpaymentsSnapshot, confirmMyNowpaymentsPayment, createMyPurchase, fetchMyState, persistMyState, renewMyLot, requestMyDesistance, requestMyWithdraw } from './supabase/stateSync.js';
 import { adminPatchAppConfig, adminUpsertBank, fetchAppConfig, fetchBanks, fetchPublicStats } from './supabase/appConfigRepo.js';
-import { fetchMyDashboard, fetchMyTeamSummary } from './supabase/dashboardRepo.js';
+import { fetchMyDashboard, fetchMyNetwork, fetchMyTeamSummary } from './supabase/dashboardRepo.js';
 import { fetchMyNotifications, markAllMyNotificationsRead } from './supabase/notificationsRepo.js';
 import { fetchEliteCandidates } from './supabase/eliteRepo.js';
 import { adminProcessElitePayout } from './supabase/adminRepo.js';
@@ -167,6 +169,9 @@ const buildNowpaymentsSnapshot = (payment) => {
     warnings: Array.isArray(current.warnings) ? current.warnings : [],
   };
 };
+
+const isNowpaymentsConflictError = (message) =>
+  /no unique or exclusion constraint matching the on conflict specification/i.test(String(message || ''));
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -886,6 +891,7 @@ const QuotasView = ({ user, setUser, adminConfig, publicStats, onBuy, onOpenApn,
   const purchaseTransactions = (Array.isArray(user?.transactions) ? user.transactions : []).filter(
     (tx) => String(tx?.kind || '') === 'COMPRA' || String(tx?.type || '').startsWith('Compra ')
   );
+  const sponsorshipState = currentUser?.teamState?.sponsorship || null;
   const hasQuotaMovement =
     totalHoldings > 0 ||
     purchaseTransactions.length > 0 ||
@@ -1045,6 +1051,15 @@ const QuotasView = ({ user, setUser, adminConfig, publicStats, onBuy, onOpenApn,
         holdingsSummary={holdingsSummary}
         onOpenHowToJoin={openHowToJoinPdf}
         onOpenBanks={openBanksPdf}
+      />
+
+      <QuotaSponsorshipSummaryCard
+        t={t}
+        locale={locale}
+        sponsorship={sponsorshipState}
+        transactions={currentUser?.transactions}
+        quotaLots={currentUser?.quotaLots}
+        formatMoney={(value) => formatMoneyUsd(value, lang)}
       />
 
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -1463,6 +1478,27 @@ const WalletView = ({ setCurrentView, user, setUser, adminConfig, lang }) => {
         rawEvent,
       });
       if (!confirmRes.ok) {
+        if (isNowpaymentsConflictError(confirmRes.error)) {
+          const localSettle = settleNowpaymentsDeposit({
+            user: currentUser,
+            depositTxId: txId,
+            nowpayStatus: paymentStatus,
+            cycleMonths: adminConfig?.cycle?.months,
+            renewWindowHours: adminConfig?.cycle?.renewWindowHours,
+          });
+          if (!localSettle.ok || !localSettle.updated || !localSettle.user) {
+            alert(`${t.depositCheckFailed} ${confirmRes.error}`);
+            return;
+          }
+          const persistRes = await persistMyState(localSettle.user);
+          if (!persistRes.ok) {
+            alert(`${t.depositCheckFailed} ${persistRes.error || confirmRes.error}`);
+            return;
+          }
+          await refreshUserFromServer();
+          alert(`${t.checkComplete} (${String(paymentStatus || '').trim() || '—'})`);
+          return;
+        }
         alert(`${t.depositCheckFailed} ${confirmRes.error}`);
         return;
       }
@@ -2123,6 +2159,7 @@ const WalletView = ({ setCurrentView, user, setUser, adminConfig, lang }) => {
 const TeamView = ({ user, lang, onOpenApn }) => {
   const t = getT(lang);
   const [summary, setSummary] = useState(null);
+  const [networkLevels, setNetworkLevels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [copiedRefLink, setCopiedRefLink] = useState(false);
   const refLink = `https://comunidaderm.com/ref/${user?.username || 'user'}`;
@@ -2130,19 +2167,19 @@ const TeamView = ({ user, lang, onOpenApn }) => {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    setLoading(true);
-    fetchMyTeamSummary({ maxDepth: 5 })
-      .then((res) => {
-        if (cancelled) return;
-        setSummary(res.ok ? res.summary : null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const run = async () => {
+      setLoading(true);
+      const [summaryRes, networkRes] = await Promise.all([fetchMyTeamSummary({ maxDepth: 5 }), fetchMyNetwork({ maxDepth: 5 })]);
+      if (cancelled) return;
+      setSummary(summaryRes.ok ? summaryRes.summary : null);
+      setNetworkLevels(networkRes.ok ? networkRes.levels : []);
+      setLoading(false);
+    };
+    void run();
     return () => {
       cancelled = true;
     };
-  }, [user?.email]);
+  }, [user?.id, user?.email]);
 
   const rankTitle = translateRankTitle(summary?.rank?.title || 'Ferro', t);
   const directVol = Number(summary?.directVolume || 0);
@@ -2154,6 +2191,13 @@ const TeamView = ({ user, lang, onOpenApn }) => {
   const legs = Array.isArray(summary?.legs) ? summary.legs : [];
   const currentRankVolume = Number(summary?.rank?.volume || 0);
   const nextRank = summary?.rank?.next || null;
+  const networkSource =
+    Array.isArray(networkLevels) && networkLevels.some((level) => Array.isArray(level?.users) && level.users.length > 0)
+      ? networkLevels
+      : {
+          ...(summary || {}),
+          teamState: user?.teamState || summary?.teamState || summary?.team_state || {},
+        };
 
   const handleCopyRefLink = async () => {
     try {
@@ -2192,6 +2236,7 @@ const TeamView = ({ user, lang, onOpenApn }) => {
         onCopyRefLink={handleCopyRefLink}
         onOpenPresentation={handleOpenPresentation}
       />
+      <TeamNetworkLevelsCard t={t} lang={lang} levels={networkSource} />
     </div>
   );
 };
@@ -3137,7 +3182,7 @@ const App = () => {
             onClick={() => setSupportMenuOpen((s) => !s)}
             className="pointer-events-auto p-0 rounded-full shadow-[0_0_20px_rgba(0,255,0,0.3)] hover:scale-105 transition-transform flex items-center justify-center border-2 border-[#00FF00] relative bg-[#1A1A1A]"
           >
-            <img src="PERSONAGEM RENDA MAIS com LOGO.png" alt="Suporte" className="w-14 h-14 rounded-full object-cover" />
+            <img src="/PERSONAGEM RENDA MAIS com LOGO.png" alt="Suporte" className="w-14 h-14 rounded-full object-cover" />
             {Number(supportUnread || 0) > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-xs px-2 py-1 rounded-full font-bold text-white shadow">
                 {supportUnread > 99 ? '99+' : supportUnread}

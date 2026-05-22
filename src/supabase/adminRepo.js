@@ -17,6 +17,7 @@ const mapProfileRowToUser = (p) => ({
   updatedAt: p?.updated_at || null,
   balances: p?.balances || {},
   holdings: p?.holdings || {},
+  teamState: p?.team_state || {},
   quotaLots: Array.isArray(p?.quota_lots) ? p.quota_lots : [],
   elite: p?.elite || {},
   rankKey: p?.rank_key || null,
@@ -106,6 +107,21 @@ export const adminSetBlocked = async ({ userId, blocked }) => {
   const { error } = await client.rpc('admin_set_blocked', { target_id: userId, blocked_value: Boolean(blocked) });
   if (error) return { ok: false, error: error.message };
   return { ok: true, error: null };
+};
+
+export const adminGrantSponsorship = async ({ userId, planKey, units = 1, note } = {}) => {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'Supabase não configurado.', data: null };
+  if (!userId) return { ok: false, error: 'Usuário inválido.', data: null };
+
+  const { data, error } = await client.rpc('admin_grant_sponsorship', {
+    target_id: userId,
+    plan_key_value: String(planKey || '').trim(),
+    units_value: Math.max(1, Math.floor(safeNum(units || 1))),
+    note_value: note ? String(note) : null,
+  });
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || null };
 };
 
 export const adminListTransactions = async ({ kind, q = '', maxRows = 200 } = {}) => {
