@@ -262,6 +262,26 @@ export const adminDailyPayoutMonitor = async ({ targetDay } = {}) => {
   return { ok: true, error: null, data: data || null };
 };
 
+export const adminRunDailyPayout = async ({ runAt, targetDay, triggerSource = 'ADMIN_BUTTON' } = {}) => {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'Supabase não configurado.', data: null };
+
+  const requestedRunAt = runAt || new Date().toISOString();
+  const { data, error } = await client.functions.invoke('daily-payouts-runner', {
+    body: {
+      runAt: requestedRunAt,
+      targetDay: targetDay || null,
+      triggerSource: String(triggerSource || 'ADMIN_BUTTON').trim().toUpperCase(),
+    },
+  });
+
+  if (error || !data?.ok) {
+    return { ok: false, error: error?.message || data?.reason || 'Falha ao rodar a rotina diária.', data: null };
+  }
+
+  return { ok: true, error: null, data: data || null };
+};
+
 export const adminListElitePayoutBatches = async ({ maxRows = 20 } = {}) => {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase não configurado.', rows: [] };

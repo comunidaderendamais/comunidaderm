@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import InlineFeedbackCard from '../components/ui/InlineFeedbackCard.jsx';
 import StatusBadge from '../components/ui/StatusBadge.jsx';
-import { adminDailyPayoutMonitor } from '../supabase/adminRepo.js';
+import { adminDailyPayoutMonitor, adminRunDailyPayout } from '../supabase/adminRepo.js';
 
 const AUTO_REFRESH_MS = 30000;
 
@@ -20,6 +20,10 @@ const formatDateInput = (value = new Date()) => {
   const month = String(value.getMonth() + 1).padStart(2, '0');
   const day = String(value.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+const buildRunAtForTargetDay = (targetDay) => {
+  const day = String(targetDay || '').trim();
+  return day ? `${day}T21:00:00Z` : new Date().toISOString();
 };
 const copyToClipboard = async (text) => {
   try {
@@ -97,6 +101,7 @@ function MonitorStatCard({ label, value, helper, indicator }) {
 export default function AdminDailyPayoutMonitor() {
   const [targetDay, setTargetDay] = useState(() => formatDateInput(new Date()));
   const [busy, setBusy] = useState(false);
+  const [runBusy, setRunBusy] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [copyFeedback, setCopyFeedback] = useState('');
@@ -136,7 +141,32 @@ export default function AdminDailyPayoutMonitor() {
   const activeItems = Array.isArray(snapshot?.activeLots?.items) ? snapshot.activeLots.items : [];
   const dailyItems = Array.isArray(snapshot?.daily?.items) ? snapshot.daily.items : [];
   const overrideItems = Array.isArray(snapshot?.overrides?.items) ? snapshot.overrides.items : [];
+  const runAudits = Array.isArray(snapshot?.runAudits) ? snapshot.runAudits : [];
   const latestEvent = snapshot?.latestEvent || {};
+  const latestRun = snapshot?.latestRun || {};
+  const dayAudit = runAudits.find((item) => String(item?.run_day || '') === String(targetDay || '')) || null;
+  const successfulRunForDay =
+    runAudits.find((item) => String(item?.run_day || '') === String(targetDay || '') && String(item?.status || '').toUpperCase() === 'SUCCESS') || null;
+  const runLocked = Boolean(successfulRunForDay);
+  const dayStatusBadge = successfulRunForDay
+    ? {
+        variant: 'success',
+        label: 'Fechado com sucesso',
+      }
+    : String(dayAudit?.status || '').toUpperCase() === 'ERROR'
+      ? {
+          variant: 'danger',
+          label: 'Falha na rodada',
+        }
+      : String(dayAudit?.status || '').toUpperCase() === 'RUNNING'
+        ? {
+            variant: 'warning',
+            label: 'Rodada em execução',
+          }
+        : {
+            variant: 'warning',
+            label: 'Aguardando rodada',
+          };
 
   const cards = useMemo(() => {
     const activeLots = Number(snapshot?.activeLots?.totalLots || 0);
@@ -232,6 +262,50 @@ export default function AdminDailyPayoutMonitor() {
     window.setTimeout(() => setCopyFeedback(''), 2000);
   };
 
+  const executeRun = async ({ replay = false } = {}) => {
+    const triggerSource = replay ? 'MANUAL_REPLAY' : 'ADMIN_BUTTON';
+    const confirmed = window.confirm(
+      replay
+        ? `Confirma o replay da rotina DAILY da data ${targetDay}?\n\nUse isso apenas para conferência operacional. Se o dia já foi processado, a rotina não duplica créditos.`
+        : `Confirma rodar a rotina DAILY da data ${targetDay}?\n\nA execução manual não duplica créditos do mesmo dia. O cron continua ativo para a rodada automática.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setRunBusy(true);
+      const runAt = buildRunAtForTargetDay(targetDay);
+      const res = await adminRunDailyPayout({ runAt, targetDay, triggerSource });
+      if (!res.ok) {
+        setFeedback({
+          variant: 'danger',
+          title: replay ? 'Falha ao rodar o replay' : 'Falha ao rodar a rotina manual',
+          message: res.error || 'Não foi possível executar a rodada agora.',
+        });
+        return;
+      }
+
+      const result = res.data?.result || {};
+      const audit = res.data?.audit || {};
+      setFeedback({
+        variant: 'success',
+        title: replay ? 'Replay executado para conferência' : 'Rodada manual executada',
+        message: `Auditoria ${audit?.auditId || 'gerada'} • DAILY ${Number(result?.dailyCount || 0)} • Residual ${Number(result?.residualCount || 0)} para ${targetDay}.`,
+      });
+      await loadMonitor();
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const handleRunNow = async () => {
+    if (runLocked) return;
+    await executeRun({ replay: false });
+  };
+
+  const handleReplay = async () => {
+    await executeRun({ replay: true });
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -258,6 +332,30 @@ export default function AdminDailyPayoutMonitor() {
               <RefreshCw size={16} className={busy ? 'animate-spin' : ''} />
               {busy ? 'Atualizando...' : 'Atualizar agora'}
             </button>
+            <button
+              type="button"
+              onClick={() => void handleRunNow()}
+              disabled={busy || runBusy || runLocked}
+              className={`px-4 py-2 rounded-xl font-black inline-flex items-center justify-center gap-2 ${
+                busy || runBusy || runLocked ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-black'
+              }`}
+            >
+              <RefreshCw size={16} className={runBusy ? 'animate-spin' : ''} />
+              {runBusy ? 'Rodando...' : runLocked ? 'Dia já processado' : 'Rodar agora (admin)'}
+            </button>
+            {runLocked ? (
+              <button
+                type="button"
+                onClick={() => void handleReplay()}
+                disabled={busy || runBusy}
+                className={`px-4 py-2 rounded-xl font-black inline-flex items-center justify-center gap-2 ${
+                  busy || runBusy ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <RefreshCw size={16} className={runBusy ? 'animate-spin' : ''} />
+                {runBusy ? 'Rodando...' : 'Replay para conferência'}
+              </button>
+            ) : null}
             <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-black text-gray-700">
               <input
                 type="checkbox"
@@ -272,8 +370,10 @@ export default function AdminDailyPayoutMonitor() {
 
         <div className="mt-4 flex flex-wrap gap-3">
           <StatusBadge variant="neutral">Dia monitorado: {snapshot?.day || targetDay}</StatusBadge>
+          <StatusBadge variant={dayStatusBadge.variant}>{dayStatusBadge.label}</StatusBadge>
           <StatusBadge variant={autoRefresh ? 'success' : 'warning'}>{autoRefresh ? 'Auto-refresh ligado' : 'Atualização manual'}</StatusBadge>
           {snapshot?.generatedAt ? <StatusBadge>Gerado em {formatDateTime(snapshot.generatedAt)}</StatusBadge> : null}
+          {latestRun?.created_at ? <StatusBadge>Última auditoria em {formatDateTime(latestRun.created_at)}</StatusBadge> : null}
         </div>
 
         {feedback ? (
@@ -287,6 +387,24 @@ export default function AdminDailyPayoutMonitor() {
             <InlineFeedbackCard variant="info" title="SQL pronta" message={copyFeedback} />
           </div>
         ) : null}
+
+        {runLocked ? (
+          <div className="mt-5">
+            <InlineFeedbackCard
+              variant="info"
+              title="Dia já processado"
+              message={`Ja existe uma execução SUCCESS para ${targetDay}${successfulRunForDay?.created_at ? ` em ${formatDateTime(successfulRunForDay.created_at)}` : ''}. O botão principal fica travado; use o replay somente para conferência operacional.`}
+            />
+          </div>
+        ) : null}
+
+        <div className="mt-5">
+          <InlineFeedbackCard
+            variant="info"
+            title="Execução manual x cron"
+            message="O botão principal roda a rotina normal apenas quando o dia ainda nao foi processado. Depois de SUCCESS, ele trava visualmente e libera somente o replay explicito para auditoria e conferencia. O cron diario continua ativo e nao duplica DAILY nem residual do mesmo dia."
+          />
+        </div>
 
         <div className="mt-5 grid grid-cols-1 min-[540px]:grid-cols-2 xl:grid-cols-5 gap-4">
           {cards.map((card) => (
@@ -435,6 +553,39 @@ export default function AdminDailyPayoutMonitor() {
                     : 'Ainda não há evento recente de override para destacar.'
                 }
               />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <h4 className="text-base font-black text-gray-800">Auditoria das execuções</h4>
+            <p className="text-sm text-gray-500 mt-1">Histórico recente da rotina manual e automática para o dia monitorado.</p>
+            <div className="mt-4 space-y-3">
+              {runAudits.length === 0 ? (
+                <p className="text-sm text-gray-500">Nenhuma execução auditada encontrada para o dia monitorado e o anterior.</p>
+              ) : (
+                runAudits.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-gray-900">{item.trigger_source} • {item.run_day}</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Solicitado em {formatDateTime(item.requested_run_at)}{item.actor_email ? ` • ${item.actor_email}` : ''}
+                        </p>
+                      </div>
+                      <StatusBadge
+                        variant={item.status === 'SUCCESS' ? 'success' : item.status === 'ERROR' ? 'danger' : item.status === 'RUNNING' ? 'warning' : 'neutral'}
+                      >
+                        {item.status}
+                      </StatusBadge>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      {item.status === 'SUCCESS'
+                        ? `DAILY ${Number(item.result_payload?.dailyCount || 0)} • Residual ${Number(item.result_payload?.residualCount || 0)}`
+                        : item.error_message || 'Execução registrada sem detalhe adicional.'}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

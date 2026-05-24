@@ -8,12 +8,15 @@ export default function TeamView({ user, lang, onOpenApn }) {
   const t = getT(lang);
   const [summary, setSummary] = useState(null);
   const [networkLevels, setNetworkLevels] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [copiedRefLink, setCopiedRefLink] = useState(false);
   const refLink = `https://comunidaderm.com/ref/${user?.username || 'user'}`;
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     const run = async () => {
       setLoading(true);
@@ -88,4 +91,3 @@ export default function TeamView({ user, lang, onOpenApn }) {
     </div>
   );
 }
-
