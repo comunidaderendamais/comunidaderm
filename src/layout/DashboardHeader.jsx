@@ -48,7 +48,7 @@ export default function DashboardHeader({
             ))}
           </div>
 
-          <a href="https://t.me/seu_grupo_oficial" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 transition-colors" title="Telegram">
+          <a href="https://t.me/+LvE-VwCZFilhOTdh" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 transition-colors" title="Telegram">
             <Send size={20} />
           </a>
 
@@ -163,4 +163,3 @@ export default function DashboardHeader({
     </header>
   );
 }
-

@@ -51,13 +51,7 @@ export const fetchMyNetwork = async ({ maxDepth = 5 } = {}) => {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase não configurado.', levels: [] };
 
-  const {
-    data: { user },
-    error: authError,
-  } = await client.auth.getUser();
-  if (authError || !user?.id) return { ok: false, error: authError?.message || 'Sessão inválida.', levels: [] };
-
-  const { data, error } = await client.rpc('admin_get_user_network', { root_id: user.id, max_depth: maxDepth });
+  const { data, error } = await client.rpc('get_my_network', { max_depth: maxDepth, only_active: true });
   if (error) return { ok: false, error: error.message, levels: [] };
 
   const rows = Array.isArray(data) ? data : [];

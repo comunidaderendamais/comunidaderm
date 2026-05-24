@@ -7,13 +7,14 @@ import QuotaLotProgressCard from '../wallet/QuotaLotProgressCard.jsx';
 import QuotaLotEarningsModal from '../wallet/QuotaLotEarningsModal.jsx';
 import WalletOverviewSection from '../wallet/WalletOverviewSection.jsx';
 import { calcDesistPenaltyPct, DESIST_ANALYSIS_HOURS } from '../quota/quotaEngine.js';
-import { buildCheckoutUrlFromInvoiceId, getPaymentSnapshotSummary, hasHostedCheckoutAvailable, normalizeNowpaymentsPayment } from '../payments/nowpaymentsPresentation.js';
+import { buildCheckoutUrlFromInvoiceId, copyText, getPaymentSnapshotSummary, hasHostedCheckoutAvailable, normalizeNowpaymentsPayment } from '../payments/nowpaymentsPresentation.js';
 import { createNowpaymentPayment, fetchNowpaymentStatus } from '../payments/nowpaymentsClient.js';
 import NowpaymentsPaymentModal from '../payments/NowpaymentsPaymentModal.jsx';
 import { buildNowpaymentsOrderId, buildNowpaymentsSnapshot } from '../payments/nowpaymentsHelpers.js';
 import { isNowpaymentsConflictError, lotSourceMatchesDeposit } from '../payments/nowpaymentsReconcile.js';
 import { isSettledTransactionStatus } from '../shared/transactionStatus.js';
 import { attachNowpaymentsSnapshot, confirmMyNowpaymentsPayment, fetchMyState, persistMyState, renewMyLot, requestMyDesistance, requestMyWithdraw } from '../supabase/stateSync.js';
+import { sendTelegramAlert } from '../supabase/telegramAlerts.js';
 import { fillTemplate, formatDateShort, formatDateTime, formatMoneyUsd, getStatusLabel, getT, translateFinancialReason, translateTransactionType } from '../i18n/i18n.js';
 import { calcWithdrawNet, settleNowpaymentsDeposit, WITHDRAW_FEE_USD } from '../payments/walletEngine.js';
 import { normalizeUser } from '../shared/normalizeUser.js';
@@ -30,6 +31,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawAsset, setWithdrawAsset] = useState('USDT');
   const [withdrawNetwork, setWithdrawNetwork] = useState('BEP20');
+  const [withdrawCopyFeedback, setWithdrawCopyFeedback] = useState('');
   const [paymentModal, setPaymentModal] = useState({ open: false, payment: null });
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [reopenBusyId, setReopenBusyId] = useState(null);
@@ -50,6 +52,16 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
     if (withdrawAsset === 'USDC') return String(currentUser?.wallets?.usdcArbitrum || '').trim();
     if (withdrawNetwork === 'TRC20') return String(currentUser?.wallets?.usdtTrc20 || '').trim();
     return String(currentUser?.wallets?.usdtBep20 || '').trim();
+  };
+  const activeWithdrawAddress = getWithdrawAddress();
+
+  const copyWithdrawAddress = async () => {
+    if (!activeWithdrawAddress) {
+      setWithdrawCopyFeedback(t.walletActiveWalletMissing);
+      return;
+    }
+    const ok = await copyText(activeWithdrawAddress);
+    setWithdrawCopyFeedback(ok ? t.walletCopyAddressSuccess : t.walletCopyAddressError);
   };
 
   const pendingDeposits = (Array.isArray(currentUser?.transactions) ? currentUser.transactions : []).filter(
@@ -247,6 +259,12 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
       alert(translateFinancialReason(reqRes.error || 'Falha ao solicitar saque.', t));
       return;
     }
+    void sendTelegramAlert({
+      eventType: 'withdraw_requested',
+      username: currentUser?.username || currentUser?.email || currentUser?.id || 'usuario-sem-login',
+      amountUsd: amount,
+      occurredAt: new Date().toISOString(),
+    }).catch(() => null);
     await refreshUserFromServer();
     setWithdrawAmount('');
     alert(`${t.withdrawRequestedAlert} ${formatMoneyUsd(net.netUsd, lang)}`);
@@ -429,7 +447,10 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
                     <label className="text-sm text-gray-600 block mb-1">{t.walletCurrencyLabel}</label>
                     <select
                       value={withdrawAsset}
-                      onChange={(e) => setWithdrawAsset(e.target.value)}
+                      onChange={(e) => {
+                        setWithdrawAsset(e.target.value);
+                        setWithdrawCopyFeedback('');
+                      }}
                       className="w-full p-3 border rounded-lg focus:ring-[#8A2BE2] outline-none"
                     >
                       <option value="USDT">USDT</option>
@@ -441,7 +462,10 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
                     {withdrawAsset === 'USDT' ? (
                       <select
                         value={withdrawNetwork}
-                        onChange={(e) => setWithdrawNetwork(e.target.value)}
+                        onChange={(e) => {
+                          setWithdrawNetwork(e.target.value);
+                          setWithdrawCopyFeedback('');
+                        }}
                         className="w-full p-3 border rounded-lg focus:ring-[#8A2BE2] outline-none"
                       >
                         <option value="BEP20">BEP-20</option>
@@ -453,6 +477,32 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
                       </select>
                     )}
                   </div>
+                </div>
+                <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex flex-col gap-3 min-[540px]:flex-row min-[540px]:items-start min-[540px]:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{t.walletActiveWalletLabel}</p>
+                      <p className="mt-2 break-all text-sm font-black text-gray-900">
+                        {activeWithdrawAddress || t.walletActiveWalletMissing}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">{t.walletActiveWalletHint}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyWithdrawAddress}
+                      disabled={!activeWithdrawAddress}
+                      className={`inline-flex shrink-0 items-center justify-center rounded-xl px-4 py-2 text-xs font-black transition-colors ${
+                        activeWithdrawAddress
+                          ? 'bg-slate-950 text-white hover:bg-slate-800'
+                          : 'cursor-not-allowed bg-gray-200 text-gray-400'
+                      }`}
+                    >
+                      {t.walletCopyAddressBtn}
+                    </button>
+                  </div>
+                  {withdrawCopyFeedback ? (
+                    <p className="mt-2 text-xs font-medium text-violet-700">{withdrawCopyFeedback}</p>
+                  ) : null}
                 </div>
                 <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
                   {(() => {
@@ -867,4 +917,3 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
     </div>
   );
 }
-
