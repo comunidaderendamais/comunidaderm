@@ -71,27 +71,39 @@ export const getPaymentRows = (payment) => {
   const orderId = String(current?.orderId || '').trim();
 
   return [
-    ...(invoiceId ? [{ label: 'Invoice ID', value: invoiceId, copy: invoiceId }] : []),
-    ...(orderId ? [{ label: 'Order ID', value: orderId, copy: orderId }] : []),
-    { label: 'Payment ID', value: current?.paymentId || '—', copy: current?.paymentId || '' },
-    {
-      label: 'Ativo',
-      value: paymentDetails.asset,
-      hint: paymentDetails.code ? `Codigo NOWPayments: ${paymentDetails.code}` : '',
-      copy: paymentDetails.asset || '',
-    },
     {
       label: 'Rede',
       value: paymentDetails.network,
       copy: paymentDetails.network !== '—' ? paymentDetails.network : '',
+      section: 'primary',
     },
     {
       label: 'Valor',
       value: current?.payAmount ? `${current.payAmount} ${paymentDetails.asset || ''}`.trim() : '—',
       hint: paymentDetails.network !== '—' ? paymentDetails.label : '',
       copy: current?.payAmount ? String(current.payAmount) : '',
+      section: 'primary',
     },
-    { label: 'Endereço', value: current?.payAddress || '—', copy: current?.payAddress || '' },
+    {
+      label: 'Endereço',
+      value: current?.payAddress || '—',
+      hint: 'Use somente este endereço para enviar o valor exato na rede informada.',
+      copy: current?.payAddress || '',
+      actionLabel: 'Copiar endereço de pagamento',
+      className: 'border-emerald-300 bg-emerald-50',
+      valueClassName: 'text-base sm:text-lg font-black text-emerald-900',
+      section: 'primary',
+    },
+    {
+      label: 'Ativo',
+      value: paymentDetails.asset,
+      hint: paymentDetails.code ? `Codigo NOWPayments: ${paymentDetails.code}` : '',
+      copy: paymentDetails.asset || '',
+      section: 'technical',
+    },
+    ...(invoiceId ? [{ label: 'Invoice ID', value: invoiceId, copy: invoiceId, section: 'technical' }] : []),
+    ...(orderId ? [{ label: 'Order ID', value: orderId, copy: orderId, section: 'technical' }] : []),
+    { label: 'Payment ID', value: current?.paymentId || '—', copy: current?.paymentId || '', section: 'technical' },
   ];
 };
 
