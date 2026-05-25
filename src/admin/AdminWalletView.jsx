@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchNowpaymentStatus } from '../payments/nowpaymentsClient';
 import { getStatusLabel, getT } from '../i18n/i18n.js';
+import NowpaymentsPaymentModal from '../payments/NowpaymentsPaymentModal.jsx';
 import {
   getPersistedNowpaymentsStatus,
   getTransactionStatusLabel,
@@ -78,6 +79,9 @@ export default function AdminWalletView({ config }) {
   const [adjustKind, setAdjustKind] = useState('TE');
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustType, setAdjustType] = useState('');
+  const [nowpaymentsModalOpen, setNowpaymentsModalOpen] = useState(false);
+  const [nowpaymentsModalPayment, setNowpaymentsModalPayment] = useState(null);
+  const [detailsBusyByTx, setDetailsBusyByTx] = useState({});
 
   const loadRows = async () => {
     const q = String(query || '').trim();
@@ -259,6 +263,34 @@ export default function AdminWalletView({ config }) {
     }
   };
 
+  const openDepositDetails = async (item) => {
+    const snapshot = item?.meta?.meta?.nowpaymentsSnapshot || item?.meta?.nowpaymentsSnapshot || null;
+    if (snapshot) {
+      setNowpaymentsModalPayment(snapshot);
+      setNowpaymentsModalOpen(true);
+      return;
+    }
+
+    const paymentId = String(paymentIdByTx[item.id] ?? item.paymentId ?? '').trim();
+    if (!paymentId) {
+      alert('paymentId ausente.');
+      return;
+    }
+
+    try {
+      setDetailsBusyByTx((s) => ({ ...s, [item.id]: true }));
+      const nowRes = await fetchNowpaymentStatus({ paymentId });
+      if (!nowRes.ok) {
+        alert(`NOWPayments: ${translateNowpaymentsReason(nowRes.reason, t)}`);
+        return;
+      }
+      setNowpaymentsModalPayment(nowRes.data || { paymentId, paymentStatus: nowRes.status });
+      setNowpaymentsModalOpen(true);
+    } finally {
+      setDetailsBusyByTx((s) => ({ ...s, [item.id]: false }));
+    }
+  };
+
   const approveWithdraw = async (item) => {
     const stateRes = await adminGetUserState({ userId: item.profileId, maxTransactions: 800 });
     if (!stateRes.ok || !stateRes.user) {
@@ -342,6 +374,15 @@ export default function AdminWalletView({ config }) {
 
   return (
     <div className="space-y-6">
+      <NowpaymentsPaymentModal
+        isOpen={nowpaymentsModalOpen}
+        payment={nowpaymentsModalPayment}
+        onClose={() => {
+          setNowpaymentsModalOpen(false);
+          setNowpaymentsModalPayment(null);
+        }}
+        t={t}
+      />
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
           <div>
@@ -404,6 +445,10 @@ export default function AdminWalletView({ config }) {
               deposits.slice(0, 50).map((d) => {
                 const persistedNowpaymentsStatus = getPersistedNowpaymentsStatus(d);
                 const displayStatus = getTransactionStatusLabel(d, t, getStatusLabel);
+                const snapshot = d?.meta?.meta?.nowpaymentsSnapshot || d?.meta?.nowpaymentsSnapshot || null;
+                const payAddress = String(snapshot?.payAddress || snapshot?.pay_address || '').trim();
+                const resolvedPaymentId = String(paymentIdByTx[d.id] ?? d.paymentId ?? snapshot?.paymentId ?? snapshot?.payment_id ?? '').trim();
+                const isDetailsBusy = Boolean(detailsBusyByTx[d.id]);
                 return (
                 <div key={d.id} className="rounded-2xl border border-gray-200 bg-gray-50/60 p-4">
                   <div className="flex flex-col min-[540px]:flex-row min-[540px]:items-start min-[540px]:justify-between gap-3">
@@ -427,14 +472,44 @@ export default function AdminWalletView({ config }) {
                   </div>
 
                   <div className="mt-3 grid grid-cols-1 lg:grid-cols-12 gap-3">
-                    <div className="lg:col-span-8">
-                      <label className="block text-xs font-black text-gray-600">paymentId</label>
-                      <input
-                        value={String(paymentIdByTx[d.id] ?? d.paymentId ?? '')}
-                        onChange={(e) => setPaymentIdByTx((s) => ({ ...s, [d.id]: e.target.value }))}
-                        placeholder="Cole o paymentId da NOWPayments"
-                        className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
-                      />
+                    <div className="lg:col-span-8 space-y-3">
+                      <div>
+                        <label className="block text-xs font-black text-gray-600">paymentId</label>
+                        <input
+                          value={resolvedPaymentId}
+                          onChange={(e) => setPaymentIdByTx((s) => ({ ...s, [d.id]: e.target.value }))}
+                          placeholder="Cole o paymentId da NOWPayments"
+                          className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
+                        />
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(resolvedPaymentId)}
+                            className="px-3 py-1 rounded-full text-xs font-black border border-gray-200 bg-white text-gray-800"
+                          >
+                            Copiar paymentId
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-gray-600">Endereço pay-in</label>
+                        <input
+                          value={payAddress}
+                          readOnly
+                          placeholder="— (sem endereço salvo; use Verificar)"
+                          className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 bg-white text-gray-900 outline-none"
+                        />
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={!payAddress}
+                            onClick={() => copyToClipboard(payAddress)}
+                            className={`px-3 py-1 rounded-full text-xs font-black border ${payAddress ? 'border-gray-200 bg-white text-gray-800' : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                          >
+                            Copiar pay-in
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     <div className="lg:col-span-4 flex items-end gap-2">
                       <button
@@ -444,6 +519,14 @@ export default function AdminWalletView({ config }) {
                         className={`w-full px-4 py-3 rounded-xl font-black ${busy || isSettledTransactionStatus(d?.status) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#00FF00] text-black hover:bg-green-400'}`}
                       >
                         Verificar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isDetailsBusy}
+                        onClick={() => openDepositDetails(d)}
+                        className={`w-full px-4 py-3 rounded-xl font-black border ${isDetailsBusy ? 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-gray-800 border-gray-200 hover:border-[#00FF00]'}`}
+                      >
+                        Detalhes
                       </button>
                     </div>
                   </div>
