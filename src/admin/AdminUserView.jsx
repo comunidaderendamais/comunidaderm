@@ -456,16 +456,38 @@ export default function AdminUserView({ config }) {
                       ) : (
                         <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
                           {lvlUsers.map((u) => (
-                            <div key={u.key} className="rounded-2xl border border-gray-200 bg-white px-4 py-4">
+                            (() => {
+                              const hasAnyQuota =
+                                safeNum(u?.planStats?.cota10?.units || 0) +
+                                  safeNum(u?.planStats?.cota50?.units || 0) +
+                                  safeNum(u?.planStats?.cota100?.units || 0) >
+                                0;
+                              const statusLabel = hasAnyQuota ? 'ATIVO' : 'INATIVO';
+                              const statusPillClass = hasAnyQuota
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                : 'border-red-200 bg-red-50 text-red-800';
+                              const cardClass = hasAnyQuota
+                                ? 'border-emerald-200 bg-emerald-50/35 border-l-4 border-l-emerald-500'
+                                : 'border-red-200 bg-red-50/30 border-l-4 border-l-red-500';
+
+                              return (
+                                <div key={u.key} className={`rounded-2xl border px-4 py-4 ${cardClass}`.trim()}>
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <p className="text-sm font-black text-gray-900 truncate">@{u.username}</p>
                                   <p className="mt-1 text-xs text-gray-500 truncate">{u.email}</p>
                                   <p className="mt-1 text-[11px] text-gray-500">Cadastro: {u.createdAt ? formatDate(u.createdAt) : '—'}</p>
                                 </div>
-                                <span className="shrink-0 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700 whitespace-nowrap">
-                                  {u.rankTitle}
-                                </span>
+                                <div className="flex flex-col items-end gap-2">
+                                  <span
+                                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.18em] whitespace-nowrap ${statusPillClass}`.trim()}
+                                  >
+                                    {statusLabel}
+                                  </span>
+                                  <span className="shrink-0 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700 whitespace-nowrap">
+                                    {u.rankTitle}
+                                  </span>
+                                </div>
                               </div>
 
                               <div className="mt-3 grid grid-cols-1 min-[540px]:grid-cols-2 gap-2">
@@ -481,29 +503,27 @@ export default function AdminUserView({ config }) {
 
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {[
-                                  { k: 'cota10', label: 'COTA 10' },
-                                  { k: 'cota50', label: 'COTA 50' },
-                                  { k: 'cota100', label: 'COTA 100' },
-                                ]
-                                  .filter((x) => safeNum(u?.planStats?.[x.k]?.units || 0) > 0)
-                                  .map((x) => (
-                                    <span
-                                      key={x.k}
-                                      className="rounded-full border border-[#00FF00]/20 bg-[#00FF00]/10 px-2.5 py-1 text-[11px] font-black text-emerald-800 whitespace-nowrap"
-                                    >
-                                      {x.label}: {safeNum(u?.planStats?.[x.k]?.units || 0)} • {formatMoney(u?.planStats?.[x.k]?.totalUsd || 0)}
-                                      {u?.planStats?.[x.k]?.lastAt ? ` • ${formatDate(u.planStats[x.k].lastAt)}` : ''}
+                                  { k: 'cota10', label: 'COTA 10', activeClass: 'border-sky-200 bg-sky-50 text-sky-800' },
+                                  { k: 'cota50', label: 'COTA 50', activeClass: 'border-violet-200 bg-violet-50 text-violet-800' },
+                                  { k: 'cota100', label: 'COTA 100', activeClass: 'border-amber-200 bg-amber-50 text-amber-900' },
+                                ].map((x) => {
+                                  const units = safeNum(u?.planStats?.[x.k]?.units || 0);
+                                  const totalUsd = safeNum(u?.planStats?.[x.k]?.totalUsd || 0);
+                                  const lastAt = u?.planStats?.[x.k]?.lastAt || null;
+                                  const isActiveQuota = units > 0;
+                                  const cls = isActiveQuota ? x.activeClass : 'border-gray-200 bg-gray-50 text-gray-500';
+
+                                  return (
+                                    <span key={x.k} className={`rounded-full border px-2.5 py-1 text-[11px] font-black whitespace-nowrap ${cls}`.trim()}>
+                                      {x.label}: {units} • {formatMoney(totalUsd)}
+                                      {lastAt ? ` • ${formatDate(lastAt)}` : ''}
                                     </span>
-                                  ))}
-                                {safeNum(u?.planStats?.cota10?.units || 0) === 0 &&
-                                  safeNum(u?.planStats?.cota50?.units || 0) === 0 &&
-                                  safeNum(u?.planStats?.cota100?.units || 0) === 0 && (
-                                    <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-black text-gray-600 whitespace-nowrap">
-                                      Sem aplicações
-                                    </span>
-                                  )}
+                                  );
+                                })}
                               </div>
-                            </div>
+                                </div>
+                              );
+                            })()
                           ))}
                         </div>
                       )}
