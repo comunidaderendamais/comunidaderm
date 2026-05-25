@@ -21,6 +21,7 @@ export const buildAdminConfigFromSupabase = ({ config, banks }) => {
   });
 
   return {
+    globalSold: Number(cfg?.globalSold ?? 0),
     cycle: {
       months: Number(cycle?.months ?? 6),
       renewWindowHours: Number(cycle?.renewWindowHours ?? 72),
@@ -37,4 +38,3 @@ export const buildAdminConfigFromSupabase = ({ config, banks }) => {
     },
   };
 };
-

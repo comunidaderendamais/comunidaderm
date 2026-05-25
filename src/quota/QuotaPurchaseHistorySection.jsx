@@ -1,6 +1,7 @@
 import EmptyStateCard from '../components/ui/EmptyStateCard.jsx';
 import StatusBadge from '../components/ui/StatusBadge.jsx';
 import { PieChart } from 'lucide-react';
+import { getTransactionStatusLabel } from '../payments/nowpaymentsPresentation.js';
 
 export default function QuotaPurchaseHistorySection({
   t,
@@ -37,7 +38,7 @@ export default function QuotaPurchaseHistorySection({
                     <p className="mt-1 text-xs text-gray-500">{formatDateTime(tx.at, lang)}</p>
                   </div>
                   <StatusBadge className="rounded-full px-3 py-1 text-[11px] font-bold shrink-0">
-                    {getStatusLabel(tx.status, t)}
+                    {getTransactionStatusLabel(tx, t, getStatusLabel)}
                   </StatusBadge>
                 </div>
 
@@ -73,7 +74,7 @@ export default function QuotaPurchaseHistorySection({
                     <td className="p-4">{translateTransactionType(tx.type, t)}</td>
                     <td className="p-4">{tx.payment || '—'}</td>
                     <td className="p-4">
-                      <StatusBadge className="rounded text-xs px-2 py-1 font-bold">{getStatusLabel(tx.status, t)}</StatusBadge>
+                      <StatusBadge className="rounded text-xs px-2 py-1 font-bold">{getTransactionStatusLabel(tx, t, getStatusLabel)}</StatusBadge>
                     </td>
                     <td className="p-4 text-right font-bold">{formatMoneyUsd(tx.amount, lang)}</td>
                   </tr>

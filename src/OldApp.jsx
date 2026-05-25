@@ -61,8 +61,17 @@ const App = () => {
   const [supportUnread, setSupportUnread] = useState(0);
   const [notificationsUnread, setNotificationsUnread] = useState(0);
   const [notificationsListState, setNotificationsListState] = useState([]);
+
+  const resolveGlobalSold = (statsValue, configValue, previousValue = 0) => {
+    const candidates = [statsValue, previousValue, configValue]
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value >= 0);
+    return candidates.length ? candidates[0] : 0;
+  };
   const [teamSummary, setTeamSummary] = useState(null);
   const lastUserSnapshotRef = useRef('');
+  const lastGlobalSoldRef = useRef(0);
+  lastGlobalSoldRef.current = Number(publicStats?.globalSold || 0);
 
   const setUserLang = (next) => setLang(normalizeLang(next));
   const effectiveLang = currentView === 'admin' ? 'pt' : lang;
@@ -152,9 +161,9 @@ const App = () => {
         config: cfgRes.ok ? cfgRes.config : {},
         banks: banksRes.ok ? banksRes.banks : [],
       });
-      const nextStats = statsRes.ok ? statsRes.stats : { globalSold: 0 };
-      setPublicStats(nextStats);
-      setAdminConfig({ ...nextCfg, globalSold: Number(nextStats?.globalSold || 0) });
+      const nextGlobalSold = resolveGlobalSold(statsRes.ok ? statsRes.stats?.globalSold : null, nextCfg?.globalSold, lastGlobalSoldRef.current);
+      setPublicStats((prev) => ({ ...(statsRes.ok ? statsRes.stats : prev), globalSold: nextGlobalSold }));
+      setAdminConfig({ ...nextCfg, globalSold: nextGlobalSold });
     };
 
     run();

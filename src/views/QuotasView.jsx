@@ -10,6 +10,7 @@ import { attachNowpaymentsSnapshot, createMyPurchase, fetchMyState } from '../su
 import { createNowpaymentPayment } from '../payments/nowpaymentsClient.js';
 import NowpaymentsPaymentModal from '../payments/NowpaymentsPaymentModal.jsx';
 import { buildNowpaymentsOrderId, buildNowpaymentsSnapshot } from '../payments/nowpaymentsHelpers.js';
+import { translateNowpaymentsOperationalMessage } from '../payments/nowpaymentsPresentation.js';
 import { fillTemplate, formatDateTime, formatMoneyUsd, getLocaleForLang, getStatusLabel, getT, translateFinancialReason, translateTransactionType } from '../i18n/i18n.js';
 import { normalizeUser } from '../shared/normalizeUser.js';
 
@@ -33,10 +34,15 @@ export default function QuotasView({ user, setUser, adminConfig, publicStats, on
   const [network, setNetwork] = useState({ cota10: 'BEP20', cota50: 'BEP20', cota100: 'BEP20' });
   const [paymentModal, setPaymentModal] = useState({ open: false, payment: null });
   const [buyBusy, setBuyBusy] = useState(false);
+  const translatePaymentFlowMessage = (message) => {
+    const financial = translateFinancialReason(message, t);
+    if (financial !== String(message || '').trim()) return financial;
+    return translateNowpaymentsOperationalMessage(message, t);
+  };
 
   const formatMoney = (v) => formatMoneyUsd(v, lang);
   const round2 = (n) => Number(Number(n || 0).toFixed(2));
-  const sold = Number(publicStats?.globalSold || 0);
+  const sold = Number(publicStats?.globalSold ?? adminConfig?.globalSold ?? 0);
   const remainingGlobalQuotas = Math.max(0, QUOTA_GLOBAL_LIMIT - sold);
   const totalHoldings = plans.reduce((acc, plan) => acc + Number(currentUser?.holdings?.[plan.key] || 0), 0);
   const purchaseTransactions = (Array.isArray(user?.transactions) ? user.transactions : []).filter(
@@ -135,14 +141,14 @@ export default function QuotasView({ user, setUser, adminConfig, publicStats, on
           orderDescription: `${plan.title} x${count}`,
         });
         if (!paymentRes.ok) {
-          alert(`${t.buyProcessingError} ${String(paymentRes.reason || 'Falha ao criar cobrança.')}`);
+          alert(`${t.buyProcessingError} ${translatePaymentFlowMessage(paymentRes.reason || 'Falha ao criar cobrança.')}`);
           return;
         }
         paymentId = String(paymentRes.data?.paymentId || '').trim();
         invoiceId = String(paymentRes.data?.invoiceId || '').trim();
         orderId = String(paymentRes.data?.orderId || orderId || '').trim();
         if (!paymentId && !invoiceId && !orderId) {
-          alert(`${t.buyProcessingError} referência de cobrança ausente.`);
+          alert(`${t.buyProcessingError} ${translatePaymentFlowMessage('Referência de cobrança ausente.')}`);
           return;
         }
         nowpaymentData = paymentRes.data || null;
@@ -159,7 +165,7 @@ export default function QuotasView({ user, setUser, adminConfig, publicStats, on
         bankId: bank.id,
       });
       if (!createRes.ok || !createRes.data?.ok) {
-        alert(`${t.buyProcessingError} ${String(createRes.error || createRes.data?.reason || 'erro')}`);
+        alert(`${t.buyProcessingError} ${translatePaymentFlowMessage(createRes.error || createRes.data?.reason || 'erro')}`);
         return;
       }
 
@@ -185,7 +191,7 @@ export default function QuotasView({ user, setUser, adminConfig, publicStats, on
       await refreshUserFromServer();
       alert(t.buySuccessWithBalance);
     } catch (err) {
-      alert(`${t.buyProcessingError} ${String(err?.message || err)}`);
+      alert(`${t.buyProcessingError} ${translatePaymentFlowMessage(err?.message || err)}`);
     } finally {
       setBuyBusy(false);
     }
@@ -304,9 +310,9 @@ export default function QuotasView({ user, setUser, adminConfig, publicStats, on
       <NowpaymentsPaymentModal
         isOpen={paymentModal.open}
         payment={paymentModal.payment}
+        t={t}
         onClose={() => setPaymentModal({ open: false, payment: null })}
       />
     </>
   );
 }
-

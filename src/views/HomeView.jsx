@@ -8,7 +8,7 @@ export default function HomeView({ lang, adminConfig, publicStats, user, teamSum
   const t = getT(lang);
 
   const totalLimit = 100000;
-  const currentSold = Number(publicStats?.globalSold || 0);
+  const currentSold = Number(publicStats?.globalSold ?? adminConfig?.globalSold ?? 0);
   const percentage = Math.min((currentSold / totalLimit) * 100, 100);
 
   const formatMoney = (v) => formatMoneyUsd(v, lang);

@@ -149,20 +149,32 @@ const TeamNetworkLevelsCard = ({ t, lang, levels }) => {
                     {visibleUsers.map((u) => {
                       const rankLabel = translateRankTitle(u.rankTitle, tr);
                       const hasAnyQuota = u.planStats.some((plan) => plan.units > 0);
+                      const statusLabel = hasAnyQuota ? tr.teamStatusActive : tr.teamStatusInactive;
+                      const statusPillClass = hasAnyQuota
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : 'border-red-200 bg-red-50 text-red-800';
+                      const cardClass = hasAnyQuota
+                        ? 'border-emerald-200 bg-emerald-50/35 border-l-4 border-l-emerald-500'
+                        : 'border-red-200 bg-red-50/30 border-l-4 border-l-red-500';
 
                       return (
                         <div
                           key={u.key}
-                          className="rounded-[26px] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.55)] min-[540px]:px-5"
+                          className={`rounded-[26px] border px-4 py-4 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.55)] min-[540px]:px-5 ${cardClass}`.trim()}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-base font-black text-slate-950 truncate">@{u.username || '—'}</p>
                               <p className="mt-1 text-xs text-slate-500">{tr.teamSignupLabel}: {u.createdAt ? formatDate(u.createdAt) : '—'}</p>
                             </div>
-                            <span className="shrink-0 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700 whitespace-nowrap">
-                              {rankLabel}
-                            </span>
+                            <div className="flex flex-col items-end gap-2">
+                              <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.18em] whitespace-nowrap ${statusPillClass}`.trim()}>
+                                {statusLabel}
+                              </span>
+                              <span className="shrink-0 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700 whitespace-nowrap">
+                                {rankLabel}
+                              </span>
+                            </div>
                           </div>
 
                           <div className="mt-4 grid grid-cols-1 min-[540px]:grid-cols-2 gap-2.5">

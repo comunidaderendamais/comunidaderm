@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import ReportsOverviewSection from '../reports/ReportsOverviewSection.jsx';
 import { formatDateTime, formatMoneyUsd, getStatusLabel, getT, translateTransactionType } from '../i18n/i18n.js';
+import { getTransactionStatusLabel } from '../payments/nowpaymentsPresentation.js';
 import { normalizeUser } from '../shared/normalizeUser.js';
 
 export default function ReportsView({ user, lang }) {
@@ -16,7 +17,7 @@ export default function ReportsView({ user, lang }) {
       date: formatDateTime(tx.at, lang),
       type: translateTransactionType(tx.type, t),
       value: `${tx.amount >= 0 ? '+' : '-'}${formatMoneyUsd(Math.abs(tx.amount), lang)}`,
-      status: getStatusLabel(tx.status, t),
+      status: getTransactionStatusLabel(tx, t, getStatusLabel),
       color: tx.amount > 0 ? 'text-green-600' : 'text-red-500',
     }));
   const totalCount = reports.length;
@@ -81,4 +82,3 @@ export default function ReportsView({ user, lang }) {
     </div>
   );
 }
-

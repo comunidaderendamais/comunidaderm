@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchNowpaymentStatus } from '../payments/nowpaymentsClient';
+import { getStatusLabel, getT } from '../i18n/i18n.js';
+import {
+  getPersistedNowpaymentsStatus,
+  getTransactionStatusLabel,
+  translateNowpaymentsOperationalMessage,
+  translateNowpaymentsReason,
+  translateNowpaymentsStatus,
+} from '../payments/nowpaymentsPresentation.js';
 import { WITHDRAW_FEE_USD } from '../payments/walletEngine';
 import { adminGetUserState, adminListTransactions, adminPostAdjustment, adminSetBlocked, adminSettleNowpaymentsPayment, adminUpsertUserState } from '../supabase/adminRepo.js';
 
@@ -54,6 +62,7 @@ const copyToClipboard = async (text) => {
 };
 
 export default function AdminWalletView({ config }) {
+  const t = getT('pt');
   const [tab, setTab] = useState('deposit');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -100,6 +109,7 @@ export default function AdminWalletView({ config }) {
         type: r?.type || r?.meta?.type || null,
         payment: r?.payment || r?.meta?.payment || null,
         paymentId: r?.meta?.paymentId || '',
+        meta: r?.meta || {},
         userEmail: String(r?.email || '').toLowerCase(),
         username: String(r?.username || r?.email || '—'),
         profileId: r?.profile_id,
@@ -223,7 +233,7 @@ export default function AdminWalletView({ config }) {
 
       const nowRes = await fetchNowpaymentStatus({ paymentId });
       if (!nowRes.ok) {
-        alert(`NOWPayments: ${nowRes.reason}`);
+        alert(`NOWPayments: ${translateNowpaymentsReason(nowRes.reason, t)}`);
         return;
       }
       const savePidRes = await adminUpsertUserState({ userId: item.profileId, user: withPid });
@@ -238,12 +248,12 @@ export default function AdminWalletView({ config }) {
         rawEvent: nowRes.data || {},
       });
       if (!settled.ok || !settled.data?.ok) {
-        alert(settled.error || settled.data?.reason || 'Falha ao processar depósito.');
+        alert(translateNowpaymentsOperationalMessage(settled.error || settled.data?.reason || 'Falha ao processar depósito.', t));
         return;
       }
       setRefresh((s) => s + 1);
       await loadRows();
-      alert('Depósito verificado.');
+      alert(`Depósito verificado (${translateNowpaymentsStatus(nowRes.status, t)}).`);
     } finally {
       setBusy(false);
     }
@@ -391,7 +401,10 @@ export default function AdminWalletView({ config }) {
             {deposits.length === 0 ? (
               <p className="text-sm text-gray-500">Nenhum depósito encontrado.</p>
             ) : (
-              deposits.slice(0, 50).map((d) => (
+              deposits.slice(0, 50).map((d) => {
+                const persistedNowpaymentsStatus = getPersistedNowpaymentsStatus(d);
+                const displayStatus = getTransactionStatusLabel(d, t, getStatusLabel);
+                return (
                 <div key={d.id} className="rounded-2xl border border-gray-200 bg-gray-50/60 p-4">
                   <div className="flex flex-col min-[540px]:flex-row min-[540px]:items-start min-[540px]:justify-between gap-3">
                     <div className="min-w-0">
@@ -402,9 +415,14 @@ export default function AdminWalletView({ config }) {
                       <p className="mt-1 text-xs text-gray-500">
                         Valor: <span className="font-black text-gray-800">{formatMoney(d.amount)}</span>
                       </p>
+                      {persistedNowpaymentsStatus ? (
+                        <p className="mt-1 text-xs text-gray-500">
+                          {t.nowpaymentsStatusFieldLabel}: <span className="font-black text-gray-800">{translateNowpaymentsStatus(persistedNowpaymentsStatus, t)}</span>
+                        </p>
+                      ) : null}
                     </div>
                     <span className="shrink-0 rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-black text-gray-700 whitespace-nowrap">
-                      {d.status || '—'}
+                      {displayStatus || '—'}
                     </span>
                   </div>
 
@@ -430,7 +448,8 @@ export default function AdminWalletView({ config }) {
                     </div>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

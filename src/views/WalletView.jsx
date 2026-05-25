@@ -7,7 +7,17 @@ import QuotaLotProgressCard from '../wallet/QuotaLotProgressCard.jsx';
 import QuotaLotEarningsModal from '../wallet/QuotaLotEarningsModal.jsx';
 import WalletOverviewSection from '../wallet/WalletOverviewSection.jsx';
 import { calcDesistPenaltyPct, DESIST_ANALYSIS_HOURS } from '../quota/quotaEngine.js';
-import { buildCheckoutUrlFromInvoiceId, copyText, getPaymentSnapshotSummary, hasHostedCheckoutAvailable, normalizeNowpaymentsPayment } from '../payments/nowpaymentsPresentation.js';
+import {
+  buildCheckoutUrlFromInvoiceId,
+  copyText,
+  getPaymentSnapshotSummary,
+  hasHostedCheckoutAvailable,
+  normalizeNowpaymentsPayment,
+  getTransactionStatusLabel,
+  translateNowpaymentsOperationalMessage,
+  translateNowpaymentsReason,
+  translateNowpaymentsStatus,
+} from '../payments/nowpaymentsPresentation.js';
 import { createNowpaymentPayment, fetchNowpaymentStatus } from '../payments/nowpaymentsClient.js';
 import NowpaymentsPaymentModal from '../payments/NowpaymentsPaymentModal.jsx';
 import { buildNowpaymentsOrderId, buildNowpaymentsSnapshot } from '../payments/nowpaymentsHelpers.js';
@@ -35,6 +45,11 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
   const [paymentModal, setPaymentModal] = useState({ open: false, payment: null });
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [reopenBusyId, setReopenBusyId] = useState(null);
+  const translatePaymentFlowMessage = (message) => {
+    const financial = translateFinancialReason(message, t);
+    if (financial !== String(message || '').trim()) return financial;
+    return translateNowpaymentsOperationalMessage(message, t);
+  };
 
   const persistUser = (u) => {
     setUser?.(u);
@@ -155,7 +170,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
 
       setPaymentModal({ open: true, payment });
     } catch (err) {
-      alert(`${t.walletReopenChargeError} ${String(err?.message || err)}`);
+      alert(`${t.walletReopenChargeError} ${translatePaymentFlowMessage(err?.message || err)}`);
     } finally {
       setReopenBusyId(null);
     }
@@ -168,7 +183,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
       const txs = Array.isArray(currentUser?.transactions) ? currentUser.transactions : [];
       const tx = txs.find((t) => String(t?.id || '') === String(txId));
       if (isSettledTransactionStatus(tx?.status)) {
-        alert(t.statusCompleted || 'Pagamento confirmado');
+        alert(t.statusCompleted);
         return;
       }
       const refs = getDepositReference(tx);
@@ -180,7 +195,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
       const alreadyApplied = existingLots.some((lot) => lotSourceMatchesDeposit(lot, refs, txId));
       if (alreadyApplied) {
         await refreshUserFromServer();
-        alert(t.statusCompleted || 'Pagamento confirmado');
+        alert(t.statusCompleted);
         return;
       }
       let paymentStatus = null;
@@ -188,7 +203,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
       if (refs.paymentId) {
         const res = await fetchNowpaymentStatus({ paymentId: refs.paymentId });
         if (!res.ok) {
-          alert(`${t.depositCheckFailed} ${res.reason}`);
+          alert(`${t.depositCheckFailed} ${translateNowpaymentsReason(res.reason, t)}`);
           return;
         }
         paymentStatus = res.status;
@@ -211,23 +226,23 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
             renewWindowHours: adminConfig?.cycle?.renewWindowHours,
           });
           if (!localSettle.ok || !localSettle.updated || !localSettle.user) {
-            alert(`${t.depositCheckFailed} ${confirmRes.error}`);
+            alert(`${t.depositCheckFailed} ${translatePaymentFlowMessage(confirmRes.error)}`);
             return;
           }
           const persistRes = await persistMyState(localSettle.user);
           if (!persistRes.ok) {
-            alert(`${t.depositCheckFailed} ${persistRes.error || confirmRes.error}`);
+            alert(`${t.depositCheckFailed} ${translatePaymentFlowMessage(persistRes.error || confirmRes.error)}`);
             return;
           }
           await refreshUserFromServer();
-          alert(`${t.checkComplete} (${String(paymentStatus || '').trim() || '—'})`);
+          alert(`${t.checkComplete} (${translateNowpaymentsStatus(paymentStatus, t)})`);
           return;
         }
-        alert(`${t.depositCheckFailed} ${confirmRes.error}`);
+        alert(`${t.depositCheckFailed} ${translatePaymentFlowMessage(confirmRes.error)}`);
         return;
       }
       await refreshUserFromServer();
-      alert(`${t.checkComplete} (${String(paymentStatus || '').trim() || '—'})`);
+      alert(`${t.checkComplete} (${translateNowpaymentsStatus(paymentStatus, t)})`);
     } finally {
       setVerifyBusy(false);
     }
@@ -276,7 +291,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
     type: translateTransactionType(tx.type, t),
     value: formatMoneyUsd(Math.abs(tx.amount), lang),
     displayValue: `${tx.amount >= 0 ? '+' : '-'}${formatMoneyUsd(Math.abs(tx.amount), lang)}`,
-    status: getStatusLabel(tx.status, t),
+    status: getTransactionStatusLabel(tx, t, getStatusLabel),
     color: tx.amount > 0 ? 'text-green-600' : 'text-red-500',
   }));
 
@@ -328,14 +343,14 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
           orderDescription: `Renovacao ${selectedLot.planTitle} x${selectedLot.units}`,
         });
         if (!paymentRes.ok) {
-          alert(translateFinancialReason(paymentRes.reason || 'Falha ao criar cobrança.', t));
+          alert(translatePaymentFlowMessage(paymentRes.reason || 'Falha ao criar cobrança.'));
           return;
         }
         paymentId = String(paymentRes.data?.paymentId || '').trim();
         invoiceId = String(paymentRes.data?.invoiceId || '').trim();
         orderId = String(paymentRes.data?.orderId || orderId || '').trim();
         if (!paymentId && !invoiceId && !orderId) {
-          alert('Referência de cobrança ausente.');
+          alert(translatePaymentFlowMessage('Referência de cobrança ausente.'));
           return;
         }
         nowpaymentData = paymentRes.data || null;
@@ -568,7 +583,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
                           </StatusBadge>
                         </div>
                       </div>
-                      <StatusBadge>{getStatusLabel(tx.status, t)}</StatusBadge>
+                      <StatusBadge>{getTransactionStatusLabel(tx, t, getStatusLabel)}</StatusBadge>
                     </div>
 
                     <div className="mt-3 grid grid-cols-1 lg:grid-cols-12 gap-3">
@@ -912,6 +927,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
       <NowpaymentsPaymentModal
         isOpen={paymentModal.open}
         payment={paymentModal.payment}
+        t={t}
         onClose={() => setPaymentModal({ open: false, payment: null })}
       />
     </div>

@@ -1,3 +1,5 @@
+import { translateNowpaymentsStatus } from '../payments/nowpaymentsPresentation.js';
+
 export const TRANSLATIONS = {
   pt: {
     login: 'Entrar',
@@ -259,6 +261,10 @@ export const TRANSLATIONS = {
     registerWalletBtn: 'Cadastre sua carteira',
     refLink: 'Link de Indicação',
     copied: 'Copiado!',
+    paymentCopyBtn: 'Copiar',
+    paymentCopiedBtn: 'Copiado',
+    paymentCopyAddressBtn: 'Copiar endereco de pagamento',
+    paymentCopiedAddressBtn: 'Copiado endereco de pagamento',
     investorPanel: 'Painel do participante',
     notifications: 'Notificações',
     markRead: 'Marcar lidas',
@@ -526,6 +532,59 @@ export const TRANSLATIONS = {
     walletLotCycleGainLabel: 'Ganho no ciclo',
     nowpaymentsReturnSuccess: 'Checkout NOWPayments concluído. Aguarde a confirmação do pagamento no sistema.',
     nowpaymentsReturnCancel: 'Checkout NOWPayments cancelado. Você pode retomar a compra quando quiser.',
+    nowpaymentsModalTitle: 'Cobranca gerada',
+    nowpaymentsModalSubtitle: 'Use os dados abaixo para concluir o pagamento e acompanhe o status na sua carteira.',
+    nowpaymentsHostedBadge: 'Checkout oficial disponivel',
+    nowpaymentsManualBadge: 'Modo manual de pagamento',
+    nowpaymentsOpenCheckoutBtn: 'Abrir checkout NOWPayments',
+    nowpaymentsQrTitle: 'QR Code',
+    nowpaymentsQrAlt: 'QR Code do pagamento',
+    nowpaymentsQrUnavailable: 'QR indisponivel para esta cobranca.',
+    nowpaymentsQrHostedHint: 'Escaneie para abrir o checkout oficial da NOWPayments na carteira ou no navegador.',
+    nowpaymentsQrManualHint: 'Escaneie para copiar o endereco na carteira e confirme valor e rede antes de enviar.',
+    nowpaymentsAddressLabel: 'Endereco',
+    nowpaymentsAddressHint: 'Use somente este endereco para enviar o valor exato na rede informada.',
+    nowpaymentsPaymentDataBadge: 'Dado para pagamento',
+    nowpaymentsWarningsBanner: 'O checkout oficial nao ficou disponivel nesta cobranca. Os dados manuais continuam validos para pagamento.',
+    nowpaymentsConfirmBanner: 'Confirme primeiro a rede, o valor e o endereco. Os identificadores tecnicos da cobranca ficam abaixo apenas para suporte e conferencia.',
+    nowpaymentsAssetUsdtLabel: 'USDT',
+    nowpaymentsAssetUsdcLabel: 'USDC',
+    nowpaymentsNetworkBep20Label: 'BEP-20',
+    nowpaymentsNetworkTrc20Label: 'TRC-20',
+    nowpaymentsNetworkArbitrumLabel: 'Arbitrum',
+    nowpaymentsHttpErrorLabel: 'HTTP',
+    nowpaymentsWarningStageInvoice: 'Fatura',
+    nowpaymentsWarningStagePayment: 'Pagamento',
+    nowpaymentsWarningStageGeneral: 'Integracao',
+    nowpaymentsReasonTimeout: 'Tempo limite excedido ao comunicar com o gateway.',
+    nowpaymentsReasonSupabaseUnavailable: 'Supabase nao configurado.',
+    nowpaymentsReasonCreateChargeFailed: 'Falha ao criar cobranca.',
+    nowpaymentsReasonPaymentIdMissing: 'paymentId ausente.',
+    nowpaymentsReasonNowpaymentsUnavailable: 'NOWPayments indisponivel no momento.',
+    nowpaymentsReasonApiKeyMissing: 'NOWPayments API key ausente.',
+    nowpaymentsReasonInvalidAmount: 'Valor da cobranca invalido.',
+    nowpaymentsReasonOrderIdMissing: 'orderId ausente.',
+    nowpaymentsReasonUnsupportedCurrencyNetwork: 'Moeda ou rede nao suportada pela integracao atual.',
+    nowpaymentsReferenceMissing: 'Referencia de cobranca ausente.',
+    nowpaymentsUnknownError: 'Erro inesperado no fluxo de cobranca.',
+    nowpaymentsStatusWaiting: 'Aguardando pagamento',
+    nowpaymentsStatusConfirming: 'Confirmando na rede',
+    nowpaymentsStatusConfirmed: 'Confirmado',
+    nowpaymentsStatusFinished: 'Concluido',
+    nowpaymentsStatusSending: 'Em envio',
+    nowpaymentsStatusPartiallyPaid: 'Pagamento parcial',
+    nowpaymentsStatusFailed: 'Falhou',
+    nowpaymentsStatusExpired: 'Expirado',
+    nowpaymentsStatusRefunded: 'Reembolsado',
+    nowpaymentsTechnicalTitle: 'Detalhes tecnicos da cobranca',
+    nowpaymentsTechnicalSubtitle: 'Invoice ID, Order ID e Payment ID para auditoria ou suporte.',
+    nowpaymentsShowTechnicalBtn: 'Revelar',
+    nowpaymentsHideTechnicalBtn: 'Ocultar',
+    nowpaymentsCodeHintLabel: 'Codigo NOWPayments',
+    nowpaymentsInvoiceIdLabel: 'Invoice ID',
+    nowpaymentsOrderIdLabel: 'Order ID',
+    nowpaymentsPaymentIdLabel: 'Payment ID',
+    nowpaymentsStatusFieldLabel: 'Status atual',
     refresh: 'Atualizar',
     statusAwaitingPayment: 'Aguardando confirmação',
     statusPending: 'Em análise',
@@ -668,6 +727,8 @@ export const TRANSLATIONS = {
     teamSignupLabel: 'Cadastro',
     teamInvestedLabel: 'Total investido',
     teamQuotasLabel: 'Cotas',
+    teamStatusActive: 'Ativo',
+    teamStatusInactive: 'Inativo',
     teamNoActiveQuotas: 'Sem cotas ativas',
     teamLevelLabel: '{lvl}º nível',
     teamPaginationPrev: 'Anterior',
@@ -1013,6 +1074,10 @@ export const TRANSLATIONS = {
     registerWalletBtn: 'Register your wallet',
     refLink: 'Referral Link',
     copied: 'Copied!',
+    paymentCopyBtn: 'Copy',
+    paymentCopiedBtn: 'Copied',
+    paymentCopyAddressBtn: 'Copy payment address',
+    paymentCopiedAddressBtn: 'Copied payment address',
     investorPanel: 'Participant dashboard',
     notifications: 'Notifications',
     markRead: 'Mark read',
@@ -1279,6 +1344,59 @@ export const TRANSLATIONS = {
     walletLotCycleGainLabel: 'Cycle gain',
     nowpaymentsReturnSuccess: 'NOWPayments checkout completed. Wait for the payment confirmation in the system.',
     nowpaymentsReturnCancel: 'NOWPayments checkout canceled. You can resume the purchase whenever you want.',
+    nowpaymentsModalTitle: 'Charge created',
+    nowpaymentsModalSubtitle: 'Use the details below to complete the payment and track the status in your wallet.',
+    nowpaymentsHostedBadge: 'Official checkout available',
+    nowpaymentsManualBadge: 'Manual payment mode',
+    nowpaymentsOpenCheckoutBtn: 'Open NOWPayments checkout',
+    nowpaymentsQrTitle: 'QR Code',
+    nowpaymentsQrAlt: 'Payment QR Code',
+    nowpaymentsQrUnavailable: 'QR unavailable for this charge.',
+    nowpaymentsQrHostedHint: 'Scan to open the official NOWPayments checkout in your wallet or browser.',
+    nowpaymentsQrManualHint: 'Scan to copy the address into your wallet and confirm amount and network before sending.',
+    nowpaymentsAddressLabel: 'Address',
+    nowpaymentsAddressHint: 'Use only this address to send the exact amount on the informed network.',
+    nowpaymentsPaymentDataBadge: 'Payment data',
+    nowpaymentsWarningsBanner: 'The official checkout was not available for this charge. The manual payment details are still valid.',
+    nowpaymentsConfirmBanner: 'Confirm the network, amount, and address first. The technical charge identifiers below are for support and verification only.',
+    nowpaymentsAssetUsdtLabel: 'USDT',
+    nowpaymentsAssetUsdcLabel: 'USDC',
+    nowpaymentsNetworkBep20Label: 'BEP-20',
+    nowpaymentsNetworkTrc20Label: 'TRC-20',
+    nowpaymentsNetworkArbitrumLabel: 'Arbitrum',
+    nowpaymentsHttpErrorLabel: 'HTTP',
+    nowpaymentsWarningStageInvoice: 'Invoice',
+    nowpaymentsWarningStagePayment: 'Payment',
+    nowpaymentsWarningStageGeneral: 'Integration',
+    nowpaymentsReasonTimeout: 'Gateway communication timed out.',
+    nowpaymentsReasonSupabaseUnavailable: 'Supabase is not configured.',
+    nowpaymentsReasonCreateChargeFailed: 'Failed to create charge.',
+    nowpaymentsReasonPaymentIdMissing: 'Missing paymentId.',
+    nowpaymentsReasonNowpaymentsUnavailable: 'NOWPayments is currently unavailable.',
+    nowpaymentsReasonApiKeyMissing: 'NOWPayments API key is missing.',
+    nowpaymentsReasonInvalidAmount: 'Invalid charge amount.',
+    nowpaymentsReasonOrderIdMissing: 'Missing orderId.',
+    nowpaymentsReasonUnsupportedCurrencyNetwork: 'Currency or network is not supported by the current integration.',
+    nowpaymentsReferenceMissing: 'Missing charge reference.',
+    nowpaymentsUnknownError: 'Unexpected charge flow error.',
+    nowpaymentsStatusWaiting: 'Awaiting payment',
+    nowpaymentsStatusConfirming: 'Confirming on-chain',
+    nowpaymentsStatusConfirmed: 'Confirmed',
+    nowpaymentsStatusFinished: 'Completed',
+    nowpaymentsStatusSending: 'Sending',
+    nowpaymentsStatusPartiallyPaid: 'Partially paid',
+    nowpaymentsStatusFailed: 'Failed',
+    nowpaymentsStatusExpired: 'Expired',
+    nowpaymentsStatusRefunded: 'Refunded',
+    nowpaymentsTechnicalTitle: 'Technical charge details',
+    nowpaymentsTechnicalSubtitle: 'Invoice ID, Order ID, and Payment ID for audit or support.',
+    nowpaymentsShowTechnicalBtn: 'Show',
+    nowpaymentsHideTechnicalBtn: 'Hide',
+    nowpaymentsCodeHintLabel: 'NOWPayments code',
+    nowpaymentsInvoiceIdLabel: 'Invoice ID',
+    nowpaymentsOrderIdLabel: 'Order ID',
+    nowpaymentsPaymentIdLabel: 'Payment ID',
+    nowpaymentsStatusFieldLabel: 'Current status',
     refresh: 'Refresh',
     statusAwaitingPayment: 'Awaiting confirmation',
     statusPending: 'Under review',
@@ -1421,6 +1539,8 @@ export const TRANSLATIONS = {
     teamSignupLabel: 'Signup',
     teamInvestedLabel: 'Total invested',
     teamQuotasLabel: 'Quotas',
+    teamStatusActive: 'Active',
+    teamStatusInactive: 'Inactive',
     teamNoActiveQuotas: 'No active quotas',
     teamLevelLabel: 'Level {lvl}',
     teamPaginationPrev: 'Previous',
@@ -1766,6 +1886,10 @@ export const TRANSLATIONS = {
     registerWalletBtn: 'Registra tu billetera',
     refLink: 'Enlace de Referencia',
     copied: '¡Copiado!',
+    paymentCopyBtn: 'Copiar',
+    paymentCopiedBtn: 'Copiado',
+    paymentCopyAddressBtn: 'Copiar direccion de pago',
+    paymentCopiedAddressBtn: 'Direccion de pago copiada',
     investorPanel: 'Panel del participante',
     notifications: 'Notificaciones',
     markRead: 'Marcar leídas',
@@ -2033,6 +2157,59 @@ export const TRANSLATIONS = {
     walletLotCycleGainLabel: 'Ganancia del ciclo',
     nowpaymentsReturnSuccess: 'Checkout de NOWPayments completado. Espera la confirmación del pago en el sistema.',
     nowpaymentsReturnCancel: 'Checkout de NOWPayments cancelado. Puedes retomar la compra cuando quieras.',
+    nowpaymentsModalTitle: 'Cobro generado',
+    nowpaymentsModalSubtitle: 'Usa los datos abajo para completar el pago y seguir el estado en tu billetera.',
+    nowpaymentsHostedBadge: 'Checkout oficial disponible',
+    nowpaymentsManualBadge: 'Modo manual de pago',
+    nowpaymentsOpenCheckoutBtn: 'Abrir checkout NOWPayments',
+    nowpaymentsQrTitle: 'QR Code',
+    nowpaymentsQrAlt: 'QR Code del pago',
+    nowpaymentsQrUnavailable: 'QR no disponible para este cobro.',
+    nowpaymentsQrHostedHint: 'Escanea para abrir el checkout oficial de NOWPayments en la billetera o en el navegador.',
+    nowpaymentsQrManualHint: 'Escanea para copiar la direccion en la billetera y confirma importe y red antes de enviar.',
+    nowpaymentsAddressLabel: 'Direccion',
+    nowpaymentsAddressHint: 'Usa solo esta direccion para enviar el importe exacto en la red informada.',
+    nowpaymentsPaymentDataBadge: 'Dato para pago',
+    nowpaymentsWarningsBanner: 'El checkout oficial no estuvo disponible para este cobro. Los datos manuales siguen siendo validos para el pago.',
+    nowpaymentsConfirmBanner: 'Confirma primero la red, el importe y la direccion. Los identificadores tecnicos del cobro abajo son solo para soporte y verificacion.',
+    nowpaymentsAssetUsdtLabel: 'USDT',
+    nowpaymentsAssetUsdcLabel: 'USDC',
+    nowpaymentsNetworkBep20Label: 'BEP-20',
+    nowpaymentsNetworkTrc20Label: 'TRC-20',
+    nowpaymentsNetworkArbitrumLabel: 'Arbitrum',
+    nowpaymentsHttpErrorLabel: 'HTTP',
+    nowpaymentsWarningStageInvoice: 'Factura',
+    nowpaymentsWarningStagePayment: 'Pago',
+    nowpaymentsWarningStageGeneral: 'Integracion',
+    nowpaymentsReasonTimeout: 'Se agoto el tiempo de comunicacion con el gateway.',
+    nowpaymentsReasonSupabaseUnavailable: 'Supabase no esta configurado.',
+    nowpaymentsReasonCreateChargeFailed: 'No fue posible crear el cobro.',
+    nowpaymentsReasonPaymentIdMissing: 'Falta paymentId.',
+    nowpaymentsReasonNowpaymentsUnavailable: 'NOWPayments no esta disponible en este momento.',
+    nowpaymentsReasonApiKeyMissing: 'Falta la API key de NOWPayments.',
+    nowpaymentsReasonInvalidAmount: 'Importe del cobro invalido.',
+    nowpaymentsReasonOrderIdMissing: 'Falta orderId.',
+    nowpaymentsReasonUnsupportedCurrencyNetwork: 'La moneda o la red no son compatibles con la integracion actual.',
+    nowpaymentsReferenceMissing: 'Falta la referencia del cobro.',
+    nowpaymentsUnknownError: 'Error inesperado en el flujo de cobro.',
+    nowpaymentsStatusWaiting: 'Esperando pago',
+    nowpaymentsStatusConfirming: 'Confirmando en la red',
+    nowpaymentsStatusConfirmed: 'Confirmado',
+    nowpaymentsStatusFinished: 'Completado',
+    nowpaymentsStatusSending: 'En envio',
+    nowpaymentsStatusPartiallyPaid: 'Pago parcial',
+    nowpaymentsStatusFailed: 'Fallido',
+    nowpaymentsStatusExpired: 'Expirado',
+    nowpaymentsStatusRefunded: 'Reembolsado',
+    nowpaymentsTechnicalTitle: 'Detalles tecnicos del cobro',
+    nowpaymentsTechnicalSubtitle: 'Invoice ID, Order ID y Payment ID para auditoria o soporte.',
+    nowpaymentsShowTechnicalBtn: 'Mostrar',
+    nowpaymentsHideTechnicalBtn: 'Ocultar',
+    nowpaymentsCodeHintLabel: 'Codigo NOWPayments',
+    nowpaymentsInvoiceIdLabel: 'Invoice ID',
+    nowpaymentsOrderIdLabel: 'Order ID',
+    nowpaymentsPaymentIdLabel: 'Payment ID',
+    nowpaymentsStatusFieldLabel: 'Estado actual',
     refresh: 'Actualizar',
     statusAwaitingPayment: 'Esperando confirmación',
     statusPending: 'En análisis',
@@ -2175,6 +2352,8 @@ export const TRANSLATIONS = {
     teamSignupLabel: 'Registro',
     teamInvestedLabel: 'Total invertido',
     teamQuotasLabel: 'Cuotas',
+    teamStatusActive: 'Activo',
+    teamStatusInactive: 'Inactivo',
     teamNoActiveQuotas: 'Sin cuotas activas',
     teamLevelLabel: 'Nivel {lvl}',
     teamPaginationPrev: 'Anterior',
@@ -2384,6 +2563,35 @@ export const translateTransactionType = (type, t) => {
   return raw;
 };
 
+const translateNowpaymentsNotificationText = (text, t) => {
+  const raw = String(text || '').trim();
+  if (!raw) return raw;
+
+  const translatedType = translateTransactionType(raw, t);
+  if (translatedType !== raw) return translatedType;
+
+  if (/^Compra em an[aá]lise$/i.test(raw) || /^Purchase under review$/i.test(raw) || /^Compra en an[aá]lisis$/i.test(raw)) {
+    return t.pendingPurchaseTitle;
+  }
+  if (
+    /^aguardando confirma[cç][aã]o do pagamento\.?$/i.test(raw) ||
+    /^awaiting payment confirmation\.?$/i.test(raw) ||
+    /^esperando la confirmaci[oó]n del pago\.?$/i.test(raw)
+  ) {
+    return t.pendingPurchaseMessage;
+  }
+
+  const statusMatch = raw.match(/^(status(?: atual| actual| current)?|current status|estado actual)\s*:\s*(.+)$/i);
+  if (statusMatch) {
+    return `${t.nowpaymentsStatusFieldLabel}: ${translateNowpaymentsStatus(statusMatch[2], t)}`;
+  }
+
+  const translatedStatus = translateNowpaymentsStatus(raw, t);
+  if (translatedStatus !== raw) return translatedStatus;
+
+  return raw;
+};
+
 export const translateNotification = (notification, t, lang) => {
   const n = notification || {};
   if (n?.i18n?.titleKey || n?.i18n?.messageKey) {
@@ -2401,6 +2609,8 @@ export const translateNotification = (notification, t, lang) => {
       message: fillTemplate(template, values),
     };
   }
+  const translatedTitle = translateNowpaymentsNotificationText(n.title, t);
+  const translatedMessage = translateNowpaymentsNotificationText(n.message, t);
   if (n.kind === 'RANK_UP') {
     const match = String(n.message || '').match(/^Parab[eé]ns!\s*Voc[eê]\s*alcan[cç]ou\s*o\s*rank\s*(.+)\.$/i);
     return {
@@ -2500,6 +2710,13 @@ export const translateNotification = (notification, t, lang) => {
         amount: match?.[2] || '',
         penalty: match?.[3] || '',
       }),
+    };
+  }
+  if (translatedTitle !== String(n.title || '') || translatedMessage !== String(n.message || '')) {
+    return {
+      ...n,
+      title: translatedTitle || n.title,
+      message: translatedMessage || n.message,
     };
   }
   return n;

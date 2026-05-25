@@ -47,11 +47,11 @@ export const fetchMyTeamSummary = async ({ maxDepth = 5 } = {}) => {
   return { ok: Boolean(data?.ok), error: null, summary: data || null };
 };
 
-export const fetchMyNetwork = async ({ maxDepth = 5 } = {}) => {
+export const fetchMyNetwork = async ({ maxDepth = 5, onlyActive = false } = {}) => {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase não configurado.', levels: [] };
 
-  const { data, error } = await client.rpc('get_my_network', { max_depth: maxDepth, only_active: true });
+  const { data, error } = await client.rpc('get_my_network', { max_depth: maxDepth, only_active: Boolean(onlyActive) });
   if (error) return { ok: false, error: error.message, levels: [] };
 
   const rows = Array.isArray(data) ? data : [];
