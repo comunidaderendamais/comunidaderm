@@ -2,17 +2,22 @@ import { ArrowDownLeft, ArrowUpRight, CalendarClock, FileText, Sparkles } from '
 import EmptyStateCard from '../components/ui/EmptyStateCard.jsx';
 
 const MetricCard = ({ icon: Icon, accentClass, label, value, hint }) => (
-  <div className="rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.28)] backdrop-blur">
-    <div className="flex items-center gap-3">
-      <span className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${accentClass}`.trim()}>
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm font-black text-gray-900">{label}</p>
-        <p className="mt-1 text-xs leading-5 text-gray-500">{hint}</p>
+  <div
+    className="rm-neon-banner rm-neon-static rm-neon-light p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.28)] backdrop-blur"
+    style={{ '--rm-neon-radius': '24px' }}
+  >
+    <div className="rm-neon-banner-content">
+      <div className="flex items-center gap-3">
+        <span className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${accentClass}`.trim()}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-black text-gray-900">{label}</p>
+          <p className="mt-1 text-xs leading-5 text-gray-500">{hint}</p>
+        </div>
       </div>
+      <p className="mt-5 text-3xl font-black text-gray-950">{value}</p>
     </div>
-    <p className="mt-5 text-3xl font-black text-gray-950">{value}</p>
   </div>
 );
 
@@ -41,10 +46,14 @@ export default function ReportsOverviewSection({
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-[32px] border border-[#8A2BE2]/60 bg-[radial-gradient(circle_at_top_left,rgba(138,43,226,0.22),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(0,255,0,0.12),transparent_28%),linear-gradient(135deg,#050816_0%,#0b1225_58%,#111827_100%)] p-6 shadow-[0_28px_90px_-45px_rgba(138,43,226,0.55)] sm:p-8">
-        <div className="pointer-events-none absolute -left-16 top-0 h-44 w-44 rounded-full bg-[#8A2BE2]/15 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 right-0 h-44 w-44 rounded-full bg-[#00FF00]/10 blur-3xl" />
-        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.95fr)] xl:items-end">
+      <div
+        className="rm-neon-banner rm-neon-static rm-neon-surface p-6 shadow-[0_28px_90px_-45px_rgba(138,43,226,0.55)] sm:p-8"
+        style={{ '--rm-neon-radius': '32px' }}
+      >
+        <div className="rm-neon-banner-content">
+          <div className="pointer-events-none absolute -left-16 top-0 h-44 w-44 rounded-full bg-[#8A2BE2]/15 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 right-0 h-44 w-44 rounded-full bg-[#00FF00]/10 blur-3xl" />
+          <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.95fr)] xl:items-end">
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-white/80">
@@ -62,16 +71,21 @@ export default function ReportsOverviewSection({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{t.reportsHeroLatestLabel}</p>
-              <p className="mt-2 text-xl font-black text-white">{latestDate || t.reportsHeroLatestEmpty}</p>
-              <p className="mt-2 text-xs leading-5 text-slate-400">{t.reportsHeroLatestHint}</p>
+            <div className="rm-neon-banner rm-neon-static rm-neon-surface p-4 backdrop-blur" style={{ '--rm-neon-radius': '24px' }}>
+              <div className="rm-neon-banner-content">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{t.reportsHeroLatestLabel}</p>
+                <p className="mt-2 text-xl font-black text-white">{latestDate || t.reportsHeroLatestEmpty}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">{t.reportsHeroLatestHint}</p>
+              </div>
             </div>
-            <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{t.reportsHeroCountLabel}</p>
-              <p className="mt-2 text-2xl font-black text-[#00FF00]">{totalCount}</p>
-              <p className="mt-2 text-xs leading-5 text-slate-400">{t.reportsHeroCountHint}</p>
+            <div className="rm-neon-banner rm-neon-static rm-neon-surface p-4 backdrop-blur" style={{ '--rm-neon-radius': '24px' }}>
+              <div className="rm-neon-banner-content">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{t.reportsHeroCountLabel}</p>
+                <p className="mt-2 text-2xl font-black text-[#00FF00]">{totalCount}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">{t.reportsHeroCountHint}</p>
+              </div>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -120,28 +134,30 @@ export default function ReportsOverviewSection({
             </p>
           </EmptyStateCard>
 
-          <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-6 shadow-[0_24px_70px_-40px_rgba(15,23,42,0.3)]">
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600">
-                <FileText className="h-5 w-5" />
-              </span>
-              <div>
-                <h3 className="text-lg font-black text-gray-900">{t.reportsQuickTitle}</h3>
-                <p className="mt-1 text-sm text-gray-500">{t.reportsQuickSubtitle}</p>
-              </div>
-            </div>
-            <div className="mt-5 space-y-3">
-              {quickItems.map((item, index) => (
-                <div key={item.title} className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-gray-50/80 px-4 py-4">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
-                    {index + 1}
-                  </span>
-                  <div>
-                    <p className="text-sm font-black text-gray-900">{item.title}</p>
-                    <p className="mt-1 text-sm leading-6 text-gray-500">{item.desc}</p>
-                  </div>
+          <div className="rm-neon-banner rm-neon-static rm-neon-light p-6 shadow-[0_24px_70px_-40px_rgba(15,23,42,0.3)]" style={{ '--rm-neon-radius': '28px' }}>
+            <div className="rm-neon-banner-content">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600">
+                  <FileText className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-lg font-black text-gray-900">{t.reportsQuickTitle}</h3>
+                  <p className="mt-1 text-sm text-gray-500">{t.reportsQuickSubtitle}</p>
                 </div>
-              ))}
+              </div>
+              <div className="mt-5 space-y-3">
+                {quickItems.map((item, index) => (
+                  <div key={item.title} className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-gray-50/80 px-4 py-4">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <p className="text-sm font-black text-gray-900">{item.title}</p>
+                      <p className="mt-1 text-sm leading-6 text-gray-500">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

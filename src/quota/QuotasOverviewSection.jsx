@@ -8,11 +8,11 @@ export default function QuotasOverviewSection({
 }) {
   return (
     <div>
-      <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(138,43,226,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(0,255,0,0.1),transparent_26%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-[0_28px_80px_-48px_rgba(15,23,42,0.35)] sm:p-6 lg:rounded-[32px] lg:p-8">
-        <div className="pointer-events-none absolute -left-16 top-0 h-32 w-32 rounded-full bg-[#8A2BE2]/10 blur-3xl sm:h-36 sm:w-36 lg:h-40 lg:w-40" />
-        <div className="pointer-events-none absolute -bottom-16 right-0 h-32 w-32 rounded-full bg-[#00FF00]/10 blur-3xl sm:h-36 sm:w-36 lg:h-40 lg:w-40" />
+      <div className="rm-neon-banner rm-neon-static rm-neon-light relative p-5 shadow-[0_28px_80px_-48px_rgba(15,23,42,0.35)] sm:p-6 lg:p-8">
+        <div className="pointer-events-none absolute -left-16 top-0 z-0 h-32 w-32 rounded-full bg-[#8A2BE2]/10 blur-3xl sm:h-36 sm:w-36 lg:h-40 lg:w-40" />
+        <div className="pointer-events-none absolute -bottom-16 right-0 z-0 h-32 w-32 rounded-full bg-[#00FF00]/10 blur-3xl sm:h-36 sm:w-36 lg:h-40 lg:w-40" />
 
-        <div className="relative">
+        <div className="rm-neon-banner-content">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-violet-700 sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[11px]">
               <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -42,7 +42,7 @@ export default function QuotasOverviewSection({
             <button
               type="button"
               onClick={onOpenBanks}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/92 px-4 py-3 text-sm font-black text-gray-900 shadow-[0_20px_45px_-34px_rgba(15,23,42,0.35)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-[0_24px_55px_-34px_rgba(15,23,42,0.45)] lg:w-auto lg:min-w-[220px] lg:justify-between lg:px-5"
+              className="rm-glow-light-green inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/92 px-4 py-3 text-sm font-black text-gray-900 shadow-[0_20px_45px_-34px_rgba(15,23,42,0.35)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-[0_24px_55px_-34px_rgba(15,23,42,0.45)] lg:w-auto lg:min-w-[220px] lg:justify-between lg:px-5"
             >
               {t.quotasBanksPdf}
               <ArrowRight className="h-4 w-4" />

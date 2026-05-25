@@ -3,7 +3,9 @@ import { Coins, CreditCard, Sparkles, TrendingUp } from 'lucide-react';
 const DetailRow = ({ label, value, strong = false, tone = 'light' }) => (
   <div
     className={`flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 ${
-      tone === 'dark' ? 'border-white/10 bg-white/6' : 'border-gray-200 bg-gray-50/80'
+      tone === 'dark'
+        ? 'border-white/10 bg-white/6 shadow-[0_18px_40px_-36px_rgba(0,0,0,0.55)]'
+        : 'border-gray-200 bg-gray-50/80 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.28)]'
     }`.trim()}
   >
     <span className={tone === 'dark' ? 'text-sm text-slate-300' : 'text-sm text-gray-600'}>{label}</span>
@@ -47,8 +49,8 @@ export default function QuotaPurchaseCard({
   const isSaldo = selectedCoin === 'SALDO';
 
   const shellClass = isDark
-    ? 'border-[#00FF00]/35 bg-[radial-gradient(circle_at_top_left,rgba(0,255,0,0.14),transparent_28%),linear-gradient(180deg,#0b1220_0%,#111827_100%)] text-white shadow-[0_28px_80px_-42px_rgba(0,255,0,0.24)]'
-    : 'border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] text-gray-900 shadow-[0_24px_70px_-40px_rgba(15,23,42,0.22)]';
+    ? 'rm-neon-banner rm-neon-static rm-neon-surface text-white'
+    : 'rm-neon-banner rm-neon-static rm-neon-light text-gray-900';
   const badgeClass = isDark
     ? 'border-white/10 bg-white/6 text-white/80'
     : 'border-gray-200 bg-gray-50 text-gray-700';
@@ -60,10 +62,10 @@ export default function QuotaPurchaseCard({
     : 'w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-gray-900 outline-none transition focus:border-[#8A2BE2]/40';
 
   return (
-    <div className={`relative overflow-hidden rounded-[28px] border p-5 backdrop-blur sm:p-6 ${shellClass}`.trim()}>
+    <div className={`p-5 sm:p-6 ${shellClass}`.trim()}>
       <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-3xl" />
 
-      <div className="relative">
+      <div className="rm-neon-banner-content">
         <div className="flex flex-col gap-4 min-[520px]:flex-row min-[520px]:items-start min-[520px]:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -85,7 +87,9 @@ export default function QuotaPurchaseCard({
 
           <div
             className={`rounded-2xl border px-4 py-3 text-right ${
-              isDark ? 'border-white/10 bg-white/6' : 'border-gray-200 bg-white/80'
+              isDark
+                ? 'border-white/10 bg-white/6 shadow-[0_18px_40px_-36px_rgba(0,0,0,0.55)]'
+                : 'border-gray-200 bg-white/80 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.22)]'
             }`.trim()}
           >
             <p className={subtleTextClass}>{t.quotasHeroAvailableLabel}</p>
@@ -132,21 +136,39 @@ export default function QuotaPurchaseCard({
         </div>
 
         <div className="mt-6 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]">
-          <div className={`rounded-2xl border px-4 py-4 ${isDark ? 'border-white/10 bg-white/6' : 'border-gray-200 bg-white/80'}`.trim()}>
+          <div
+            className={`rounded-2xl border px-4 py-4 ${
+              isDark
+                ? 'border-white/10 bg-white/6 shadow-[0_18px_40px_-36px_rgba(0,0,0,0.55)]'
+                : 'border-gray-200 bg-white/80 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.22)]'
+            }`.trim()}
+          >
             <div className="flex items-center gap-2">
               <Coins className={`h-4 w-4 ${isDark ? 'text-[#00FF00]' : 'text-violet-600'}`.trim()} />
               <p className={subtleTextClass}>{t.quotasValidity}</p>
             </div>
             <p className={`mt-3 text-lg font-black ${isDark ? 'text-white' : 'text-gray-950'}`.trim()}>{t.quotasValidityValue}</p>
           </div>
-          <div className={`rounded-2xl border px-4 py-4 ${isDark ? 'border-white/10 bg-white/6' : 'border-gray-200 bg-white/80'}`.trim()}>
+          <div
+            className={`rounded-2xl border px-4 py-4 ${
+              isDark
+                ? 'border-white/10 bg-white/6 shadow-[0_18px_40px_-36px_rgba(0,0,0,0.55)]'
+                : 'border-gray-200 bg-white/80 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.22)]'
+            }`.trim()}
+          >
             <div className="flex items-center gap-2">
               <TrendingUp className={`h-4 w-4 ${isDark ? 'text-[#00FF00]' : 'text-emerald-600'}`.trim()} />
               <p className={subtleTextClass}>{t.quotasCurrentHoldingsLabel}</p>
             </div>
             <p className={`mt-3 text-lg font-black ${isDark ? 'text-white' : 'text-gray-950'}`.trim()}>{currentUnits}</p>
           </div>
-          <div className={`rounded-2xl border px-4 py-4 ${isDark ? 'border-white/10 bg-white/6' : 'border-gray-200 bg-white/80'}`.trim()}>
+          <div
+            className={`rounded-2xl border px-4 py-4 ${
+              isDark
+                ? 'border-white/10 bg-white/6 shadow-[0_18px_40px_-36px_rgba(0,0,0,0.55)]'
+                : 'border-gray-200 bg-white/80 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.22)]'
+            }`.trim()}
+          >
             <div className="flex items-center gap-2">
               <CreditCard className={`h-4 w-4 ${isDark ? 'text-[#00FF00]' : 'text-sky-600'}`.trim()} />
               <p className={subtleTextClass}>{t.quotasGlobalAvailableLabel}</p>
@@ -157,7 +179,13 @@ export default function QuotaPurchaseCard({
           </div>
         </div>
 
-        <div className={`mt-6 rounded-[24px] border p-4 ${isDark ? 'border-white/10 bg-black/15' : 'border-gray-200 bg-white/85'}`.trim()}>
+        <div
+          className={`mt-6 rounded-[24px] border p-4 ${
+            isDark
+              ? 'border-white/10 bg-black/15 shadow-[0_20px_55px_-40px_rgba(0,0,0,0.55)]'
+              : 'border-gray-200 bg-white/85 shadow-[0_20px_55px_-40px_rgba(15,23,42,0.22)]'
+          }`.trim()}
+        >
           <div className="grid gap-3">
             <div>
               <label className={`${labelClass} block mb-2`}>{t.quotasQuantity}</label>
@@ -225,8 +253,8 @@ export default function QuotaPurchaseCard({
           className={`mt-4 rounded-2xl border px-4 py-4 ${
             canBuy
               ? isDark
-                ? 'border-white/10 bg-white/6'
-                : 'border-gray-200 bg-gray-50/80'
+                ? 'border-white/10 bg-white/6 shadow-[0_18px_40px_-36px_rgba(0,0,0,0.55)]'
+                : 'border-gray-200 bg-gray-50/80 shadow-[0_18px_40px_-36px_rgba(15,23,42,0.28)]'
               : 'border-amber-200 bg-amber-50/90'
           }`.trim()}
         >
