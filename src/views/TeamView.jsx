@@ -35,7 +35,7 @@ export default function TeamView({ user, lang, onOpenApn }) {
   const rankTitle = translateRankTitle(summary?.rank?.title || 'Ferro', t);
   const directVol = Number(summary?.directVolume || 0);
   const indirectVol = Number(summary?.indirectVolume || 0);
-  const residualTotal = Number(summary?.residual?.total || 0);
+  const residualTotal = Number(user?.balances?.teamEarnings || 0);
   const te1 = Number(summary?.entryFee?.level1 || 0);
   const te2 = Number(summary?.entryFee?.level2 || 0);
   const te3 = Number(summary?.entryFee?.level3 || 0);
