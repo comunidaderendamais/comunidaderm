@@ -159,7 +159,7 @@ export default function AdminBankHistoryView({ banks }) {
                   onChange={(e) => setVideoUrls(e.target.value)}
                   rows={7}
                   className="w-full p-3 bg-gray-50 border rounded-lg focus:ring-[#00FF00] outline-none"
-                  placeholder="Uma URL por linha"
+                  placeholder="Uma URL por linha. Aceita arquivo direto e link do YouTube."
                 />
               </div>
               <div>

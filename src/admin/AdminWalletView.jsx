@@ -542,7 +542,7 @@ export default function AdminWalletView({ config }) {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-5 border-b border-gray-100">
             <p className="text-sm font-black text-gray-900">Saques</p>
-            <p className="text-xs text-gray-500 mt-1">Taxa fixa: ${WITHDRAW_FEE_USD}. Aprovação manual com hash.</p>
+            <p className="text-xs text-gray-500 mt-1">Taxa padrão: ${WITHDRAW_FEE_USD}. Quarta-feira: $0. Aprovação manual com hash.</p>
           </div>
           <div className="p-5 space-y-3">
             {withdrawals.length === 0 ? (

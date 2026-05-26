@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, Maximize2, Minimize2, CalendarDays, Clock } from 'lucide-react';
 import { getT } from '../i18n/i18n.js';
 import { fetchBankDayHistory, getTodayYmd, getYesterdayYmd, normalizeYmd } from '../supabase/bankHistoryRepo.js';
+import BankHistoryVideoCard from './BankHistoryVideoCard.jsx';
 
 const chipBase = 'px-3 py-2 rounded-xl text-sm font-bold border transition';
 
@@ -11,29 +12,6 @@ const getLocale = (lang) => {
   if (key === 'es') return 'es-ES';
   return 'pt-BR';
 };
-
-function VideoCard({ url }) {
-  const [meta, setMeta] = useState(null);
-  const isPortrait = meta ? meta.h > meta.w : false;
-
-  return (
-    <div className="bg-black rounded-2xl overflow-hidden border border-gray-200">
-      <div className={`mx-auto w-full ${isPortrait ? 'max-w-[420px]' : ''}`}>
-        <video
-          src={url}
-          controls
-          playsInline
-          onLoadedMetadata={(e) => {
-            const w = e.currentTarget.videoWidth;
-            const h = e.currentTarget.videoHeight;
-            if (w && h) setMeta({ w, h });
-          }}
-          className="w-full max-h-[65vh] bg-black object-contain"
-        />
-      </div>
-    </div>
-  );
-}
 
 export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t, lang }) {
   const tr = t || getT(lang);
@@ -200,7 +178,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t,
             {tab === 'video' && hasVideo && (
               <div className="space-y-4">
                 {day.videos.map((url, idx) => (
-                  <VideoCard key={`${url}-${idx}`} url={url} />
+                  <BankHistoryVideoCard key={`${url}-${idx}`} url={url} title={`${tr.historyVideo} ${idx + 1}`} />
                 ))}
               </div>
             )}
