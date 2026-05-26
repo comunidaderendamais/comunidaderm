@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+.rm-neon-banner {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--rm-neon-radius, 34px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 38px rgba(0, 255, 0, 0.16),
+    0 0 58px rgba(138, 43, 226, 0.14);
+}
+
+.rm-neon-banner::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(from 180deg, rgba(0, 255, 0, 0.95), rgba(138, 43, 226, 0.9), rgba(0, 255, 0, 0.95));
+  animation: rm-neon-spin var(--rm-neon-spin-duration, 5.5s) linear infinite;
+  z-index: 0;
+}
+
+.rm-neon-banner::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: calc(var(--rm-neon-radius, 34px) - 2px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  z-index: 0;
+}
+
+.rm-neon-banner-content {
+  position: relative;
+  z-index: 1;
+}
+
+.rm-neon-banner.rm-neon-static::before {
+  animation: none;
+}
+
+.rm-neon-slow {
+  --rm-neon-spin-duration: 9s;
+}
+
+.rm-neon-banner.rm-neon-surface::after {
+  background: rgba(23, 30, 43, 0.92);
+}
+
+.rm-neon-banner.rm-neon-light::after {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.rm-neon-number {
+  background: linear-gradient(90deg, #00ff00, #8a2be2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 10px rgba(0, 255, 0, 0.35)) drop-shadow(0 0 14px rgba(138, 43, 226, 0.22));
+}
+
+.rm-glow-light-green {
+  border-color: rgba(0, 255, 0, 0.34) !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 0, 0.16),
+    0 0 16px rgba(0, 255, 0, 0.12),
+    0 20px 55px -38px rgba(15, 23, 42, 0.22);
+}
+
+.rm-glow-dark-purple {
+  border-color: rgba(168, 85, 247, 0.32) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(168, 85, 247, 0.1),
+    0 0 0 1px rgba(168, 85, 247, 0.12),
+    0 0 18px rgba(138, 43, 226, 0.16),
+    0 24px 60px -40px rgba(15, 23, 42, 0.42);
+}
+
+.rm-tech-frame {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.rm-tech-frame::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: var(--rm-tech-frame-border, conic-gradient(from 180deg, rgba(0, 255, 0, 0.95), rgba(138, 43, 226, 0.9), rgba(0, 255, 0, 0.95)));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: rm-tech-frame-spin 4.2s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.rm-tech-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.12);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.rm-tech-frame > * {
+  position: relative;
+  z-index: 1;
+}
+
+.rm-tech-frame-green::before {
+  --rm-tech-frame-border: conic-gradient(
+    from 180deg,
+    rgba(0, 255, 0, 1),
+    rgba(0, 255, 0, 0.22),
+    rgba(0, 255, 0, 1),
+    rgba(0, 255, 0, 0.22),
+    rgba(0, 255, 0, 1)
+  );
+  filter: drop-shadow(0 0 18px rgba(0, 255, 0, 0.38)) drop-shadow(0 0 44px rgba(0, 255, 0, 0.22));
+}
+
+.rm-tech-frame-purple::before {
+  --rm-tech-frame-border: conic-gradient(
+    from 180deg,
+    rgba(138, 43, 226, 1),
+    rgba(138, 43, 226, 0.22),
+    rgba(138, 43, 226, 1),
+    rgba(138, 43, 226, 0.22),
+    rgba(138, 43, 226, 1)
+  );
+  filter: drop-shadow(0 0 18px rgba(138, 43, 226, 0.38)) drop-shadow(0 0 44px rgba(138, 43, 226, 0.22));
+}
+
+@keyframes rm-tech-frame-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes rm-neon-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
