@@ -36,14 +36,14 @@ const stableSerialize = (value) => {
   }
 };
 
-const ADMIN_EMAILS = new Set([
-  'rmadmin@gmail.com',
-  'comunidaderendamais@gmail.com',
-  'telexrn@gmail.com',
-  'pauloalberto5000@gmail.com',
-  'wilson270043@gmail.com',
-  'samiroliver.oliver@gmail.com',
-]);
+const formatSupportTime = (iso) => {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+};
 
 const APN_CHIP_BASE = 'px-3 py-2 rounded-xl text-sm font-bold border transition';
 
@@ -60,15 +60,6 @@ const getDocLangDefault = (lang) => {
   if (key === 'es') return 'es';
   if (key === 'fr') return 'fr';
   return 'pt';
-};
-
-const formatSupportTime = (iso) => {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
 };
 
 function EmbeddedSupportModal({ isOpen, channel, channelName, isOnline, queue, user, onClose, t }) {
@@ -405,6 +396,15 @@ function EmbeddedApnPdfModal({ isOpen, initialPage = 1, title, onClose, shortcut
     </div>
   );
 }
+
+const ADMIN_EMAILS = new Set([
+  'rmadmin@gmail.com',
+  'comunidaderendamais@gmail.com',
+  'telexrn@gmail.com',
+  'pauloalberto5000@gmail.com',
+  'wilson270043@gmail.com',
+  'samiroliver.oliver@gmail.com',
+]);
 
 const App = () => {
   const [user, setUser] = useState(null);

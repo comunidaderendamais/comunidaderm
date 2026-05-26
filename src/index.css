@@ -10,6 +10,39 @@ body {
   margin: 0;
 }
 
+.rm-record *,
+.rm-record *::before,
+.rm-record *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+.rm-record .rm-neon-banner {
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12) !important;
+}
+
+.rm-record .rm-neon-banner::before {
+  animation: none !important;
+}
+
+.rm-record .rm-neon-banner::after {
+  backdrop-filter: none !important;
+}
+
+.rm-record .rm-neon-number {
+  filter: none !important;
+}
+
+.rm-record .rm-tech-frame::before {
+  animation: none !important;
+  filter: none !important;
+}
+
+.rm-record .rm-tech-frame-green::before,
+.rm-record .rm-tech-frame-purple::before {
+  filter: none !important;
+}
+
 .rm-neon-banner {
   position: relative;
   overflow: hidden;

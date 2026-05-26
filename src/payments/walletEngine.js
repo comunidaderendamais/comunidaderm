@@ -8,17 +8,6 @@ const safeNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const isWednesdaySaoPaulo = (now) => {
-  try {
-    const weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'long' }).format(now);
-    return weekday === 'Wednesday';
-  } catch {
-    return now?.getDay?.() === 3;
-  }
-};
-
-export const getWithdrawFeeUsd = ({ now = new Date() } = {}) => (isWednesdaySaoPaulo(now) ? 0 : WITHDRAW_FEE_USD);
-
 const normalizeTx = (tx) => ({
   id: String(tx?.id || ''),
   at: String(tx?.at || ''),
@@ -30,9 +19,9 @@ const normalizeTx = (tx) => ({
   meta: tx?.meta || {},
 });
 
-export const calcWithdrawNet = ({ amountUsd, now = new Date() } = {}) => {
+export const calcWithdrawNet = ({ amountUsd }) => {
   const amount = round2(Math.max(0, safeNum(amountUsd)));
-  const feeUsd = round2(getWithdrawFeeUsd({ now }));
+  const feeUsd = round2(WITHDRAW_FEE_USD);
   const netUsd = round2(Math.max(0, amount - feeUsd));
   return { amountUsd: amount, feeUsd, netUsd };
 };
@@ -41,7 +30,7 @@ export const requestWithdraw = ({ user, amountUsd, asset, network, address, now 
   const u = user || {};
   if (u?.blocked) return { ok: false, reason: 'Usuário bloqueado.' };
 
-  const { amountUsd: amount, feeUsd, netUsd } = calcWithdrawNet({ amountUsd, now });
+  const { amountUsd: amount, feeUsd, netUsd } = calcWithdrawNet({ amountUsd });
   if (amount < 10) return { ok: false, reason: 'Valor mínimo para saque é $10.' };
   if (netUsd <= 0) return { ok: false, reason: 'Valor de saque insuficiente após taxa fixa.' };
 
@@ -167,3 +156,4 @@ export const settleNowpaymentsDeposit = ({
 
   return { ok: true, user: nextUser, updated: true };
 };
+

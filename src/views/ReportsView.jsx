@@ -5,7 +5,7 @@ import { formatDateTime, formatMoneyUsd, getStatusLabel, getT, translateTransact
 import { getTransactionStatusLabel } from '../payments/nowpaymentsPresentation.js';
 import { normalizeUser } from '../shared/normalizeUser.js';
 
-const reportsMetricCard = ({ icon: Icon, accentClass, label, value, hint }) => (
+const MetricCard = ({ icon: Icon, accentClass, label, value, hint }) => (
   <div
     className="rm-neon-banner rm-neon-static rm-neon-light p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.28)] backdrop-blur"
     style={{ '--rm-neon-radius': '24px' }}
@@ -25,7 +25,7 @@ const reportsMetricCard = ({ icon: Icon, accentClass, label, value, hint }) => (
   </div>
 );
 
-function ReportsHeroSection({ t, totalCount, creditCount, debitCount, latestDate, hasReports }) {
+function ReportsOverviewSection({ t, totalCount, creditCount, debitCount, latestDate, hasReports }) {
   const quickItems = [
     { title: t.reportsQuickItem1Title, desc: t.reportsQuickItem1Desc },
     { title: t.reportsQuickItem2Title, desc: t.reportsQuickItem2Desc },
@@ -79,44 +79,39 @@ function ReportsHeroSection({ t, totalCount, creditCount, debitCount, latestDate
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
-        {reportsMetricCard({
-          icon: Sparkles,
-          accentClass: 'border-violet-100 bg-violet-50 text-violet-600',
-          label: t.reportsMetricTotalTitle,
-          value: String(totalCount),
-          hint: t.reportsMetricTotalHint,
-        })}
-        {reportsMetricCard({
-          icon: ArrowDownLeft,
-          accentClass: 'border-emerald-100 bg-emerald-50 text-emerald-600',
-          label: t.reportsMetricCreditsTitle,
-          value: String(creditCount),
-          hint: t.reportsMetricCreditsHint,
-        })}
-        {reportsMetricCard({
-          icon: ArrowUpRight,
-          accentClass: 'border-rose-100 bg-rose-50 text-rose-600',
-          label: t.reportsMetricDebitsTitle,
-          value: String(debitCount),
-          hint: t.reportsMetricDebitsHint,
-        })}
-        {reportsMetricCard({
-          icon: CalendarClock,
-          accentClass: 'border-sky-100 bg-sky-50 text-sky-600',
-          label: t.reportsMetricLatestTitle,
-          value: latestDate || t.reportsMetricLatestEmpty,
-          hint: t.reportsMetricLatestHint,
-        })}
+        <MetricCard
+          icon={Sparkles}
+          accentClass="border-violet-100 bg-violet-50 text-violet-600"
+          label={t.reportsMetricTotalTitle}
+          value={String(totalCount)}
+          hint={t.reportsMetricTotalHint}
+        />
+        <MetricCard
+          icon={ArrowDownLeft}
+          accentClass="border-emerald-100 bg-emerald-50 text-emerald-600"
+          label={t.reportsMetricCreditsTitle}
+          value={String(creditCount)}
+          hint={t.reportsMetricCreditsHint}
+        />
+        <MetricCard
+          icon={ArrowUpRight}
+          accentClass="border-rose-100 bg-rose-50 text-rose-600"
+          label={t.reportsMetricDebitsTitle}
+          value={String(debitCount)}
+          hint={t.reportsMetricDebitsHint}
+        />
+        <MetricCard
+          icon={CalendarClock}
+          accentClass="border-sky-100 bg-sky-50 text-sky-600"
+          label={t.reportsMetricLatestTitle}
+          value={latestDate || t.reportsMetricLatestEmpty}
+          hint={t.reportsMetricLatestHint}
+        />
       </div>
 
       {!hasReports ? (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <EmptyStateCard
-            icon={Sparkles}
-            title={t.reportsEmptyTitle}
-            description={t.reportsEmptySubtitle}
-            className="h-full"
-          >
+          <EmptyStateCard icon={Sparkles} title={t.reportsEmptyTitle} description={t.reportsEmptySubtitle} className="h-full">
             <p className="rounded-2xl border border-gray-200 bg-white/75 px-4 py-4 text-sm leading-6 text-gray-600">
               {t.reportsEmptyPanel}
             </p>
@@ -177,7 +172,7 @@ export default function ReportsView({ user, lang }) {
 
   return (
     <div className="p-4 min-[540px]:p-6 max-w-7xl mx-auto space-y-6">
-      <ReportsHeroSection
+      <ReportsOverviewSection
         t={t}
         totalCount={totalCount}
         creditCount={creditCount}

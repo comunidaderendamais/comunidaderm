@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { FileText, Info, PieChart, Wallet, X } from 'lucide-react';
+import { useState } from 'react';
+import { FileText, PieChart, Wallet, X } from 'lucide-react';
 import InfoRow from '../components/ui/InfoRow.jsx';
 import StatusBadge from '../components/ui/StatusBadge.jsx';
 import EmptyStateCard from '../components/ui/EmptyStateCard.jsx';
@@ -26,50 +26,8 @@ import { isSettledTransactionStatus } from '../shared/transactionStatus.js';
 import { attachNowpaymentsSnapshot, confirmMyNowpaymentsPayment, fetchMyState, persistMyState, renewMyLot, requestMyDesistance, requestMyWithdraw } from '../supabase/stateSync.js';
 import { sendTelegramAlert } from '../supabase/telegramAlerts.js';
 import { fillTemplate, formatDateShort, formatDateTime, formatMoneyUsd, getStatusLabel, getT, translateFinancialReason, translateTransactionType } from '../i18n/i18n.js';
-import { calcWithdrawNet, settleNowpaymentsDeposit } from '../payments/walletEngine.js';
+import { calcWithdrawNet, settleNowpaymentsDeposit, WITHDRAW_FEE_USD } from '../payments/walletEngine.js';
 import { normalizeUser } from '../shared/normalizeUser.js';
-
-const TOAST_VARIANTS = {
-  info: {
-    wrap: 'border border-violet-200 bg-violet-50 text-violet-900',
-    icon: Info,
-  },
-  success: {
-    wrap: 'border border-green-200 bg-green-50 text-green-900',
-    icon: Info,
-  },
-  warning: {
-    wrap: 'border border-amber-200 bg-amber-50 text-amber-900',
-    icon: Info,
-  },
-};
-
-function WalletToastNotice({ open, message, onClose, variant = 'info', className = '' }) {
-  const current = TOAST_VARIANTS[variant] || TOAST_VARIANTS.info;
-  const Icon = current.icon;
-
-  if (!open || !message) return null;
-
-  return (
-    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[120] w-[min(740px,92vw)] ${className}`.trim()}>
-      <div className={`rounded-2xl px-4 py-3 shadow-xl ${current.wrap}`.trim()}>
-        <div className="flex items-start gap-2 sm:gap-3">
-          <Icon size={18} className="mt-0.5 shrink-0" />
-          <p className="text-[clamp(11px,3.2vw,18px)] font-black leading-6 min-w-0 whitespace-nowrap">{message}</p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto -mr-1 h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center hover:bg-black/5 transition"
-            aria-label="Fechar"
-            title="Fechar"
-          >
-            <X size={18} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function WalletView({ setCurrentView, user, setUser, adminConfig, lang }) {
   const currentUser = normalizeUser(user);
@@ -84,7 +42,6 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
   const [withdrawAsset, setWithdrawAsset] = useState('USDT');
   const [withdrawNetwork, setWithdrawNetwork] = useState('BEP20');
   const [withdrawCopyFeedback, setWithdrawCopyFeedback] = useState('');
-  const [withdrawWednesdayToastOpen, setWithdrawWednesdayToastOpen] = useState(false);
   const [paymentModal, setPaymentModal] = useState({ open: false, payment: null });
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [reopenBusyId, setReopenBusyId] = useState(null);
@@ -97,12 +54,6 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
   const persistUser = (u) => {
     setUser?.(u);
   };
-
-  useEffect(() => {
-    setWithdrawWednesdayToastOpen(true);
-    const timer = setTimeout(() => setWithdrawWednesdayToastOpen(false), 6500);
-    return () => clearTimeout(timer);
-  }, []);
 
   const refreshUserFromServer = async () => {
     const fetched = await fetchMyState({ maxTransactions: 200 });
@@ -300,7 +251,7 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
   const submitWithdraw = async () => {
     const addr = getWithdrawAddress();
     const amount = Number(withdrawAmount || 0);
-    const net = calcWithdrawNet({ amountUsd: amount, now: new Date() });
+    const net = calcWithdrawNet({ amountUsd: amount });
     if (currentUser?.blocked) {
       alert(t.blockedAccountSupport);
       return;
@@ -453,12 +404,6 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
 
   return (
     <div className="p-4 min-[540px]:p-6 max-w-6xl mx-auto space-y-6">
-      <WalletToastNotice
-        open={withdrawWednesdayToastOpen}
-        message={t.walletWithdrawWednesdayZeroFeeToast}
-        onClose={() => setWithdrawWednesdayToastOpen(false)}
-        variant="info"
-      />
       <WalletOverviewSection
         t={t}
         hasMovement={hasWalletMovement}
@@ -576,11 +521,11 @@ export default function WalletView({ setCurrentView, user, setUser, adminConfig,
                 </div>
                 <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
                   {(() => {
-                    const calc = calcWithdrawNet({ amountUsd: Number(withdrawAmount || 0), now: new Date() });
+                    const calc = calcWithdrawNet({ amountUsd: Number(withdrawAmount || 0) });
                     return (
                       <div className="flex items-center justify-between gap-4 text-sm">
                         <p className="text-gray-600">
-                          {t.walletFeeFixedLabel} <span className="font-black text-gray-800">${calc.feeUsd}</span>
+                          {t.walletFeeFixedLabel} <span className="font-black text-gray-800">${WITHDRAW_FEE_USD}</span>
                         </p>
                         <p className="text-gray-600">
                           {t.walletYouReceiveLabel} <span className="font-black text-gray-900">{formatMoneyUsd(calc.netUsd, lang)}</span>
