@@ -33,11 +33,15 @@ const getPlanStats = (user) => {
 const normalizeUser = (user, index) => {
   const planStats = getPlanStats(user);
   const totalCotas = safeNum(user?.totalCotas || planStats.reduce((acc, plan) => acc + plan.units, 0));
+  const sponsorUsername = String(user?.sponsorUsername || user?.sponsor_username || user?.referrerUsername || user?.referrer_username || '')
+    .trim()
+    .replace(/^@+/, '');
   return {
     key: String(user?.key || user?.id || user?.userId || `${index}`),
     username: String(user?.username || user?.login || user?.userId || '—'),
     email: String(user?.email || '—'),
     createdAt: user?.createdAt || user?.created_at || null,
+    sponsorUsername,
     invested: safeNum(user?.invested ?? user?.balances?.invested ?? 0),
     rankTitle: user?.rankTitle || user?.rank_key || user?.rankKey || '—',
     totalCotas,
@@ -166,6 +170,9 @@ const TeamNetworkLevelsCard = ({ t, lang, levels }) => {
                             <div className="min-w-0">
                               <p className="text-base font-black text-slate-950 truncate">@{u.username || '—'}</p>
                               <p className="mt-1 text-xs text-slate-500">{tr.teamSignupLabel}: {u.createdAt ? formatDate(u.createdAt) : '—'}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {u.sponsorUsername ? `${tr.teamSponsorLabel}: @${u.sponsorUsername}` : `${tr.teamSponsorLabel}:-`}
+                              </p>
                             </div>
                             <div className="flex flex-col items-end gap-2">
                               <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.18em] whitespace-nowrap ${statusPillClass}`.trim()}>

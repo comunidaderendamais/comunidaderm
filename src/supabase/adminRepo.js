@@ -209,6 +209,19 @@ export const adminReassignUserSponsor = async ({ userId, sponsorId, reason } = {
   return { ok: true, error: null, data: data || null };
 };
 
+export const adminReconcileUserSponsor = async ({ userId, reason } = {}) => {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'Supabase não configurado.', data: null };
+  if (!userId) return { ok: false, error: 'Usuário inválido.', data: null };
+
+  const { data, error } = await client.rpc('admin_reconcile_user_sponsor', {
+    target_id: userId,
+    reason_value: reason ? String(reason) : null,
+  });
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || null };
+};
+
 export const adminListTransactions = async ({ kind, q = '', maxRows = 200 } = {}) => {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase não configurado.', rows: [] };

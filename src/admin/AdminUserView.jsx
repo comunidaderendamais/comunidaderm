@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBankByQuotaKey } from './adminStorage';
-import { adminGetUserNetwork, adminGetUserState, adminGrantSponsorship, adminReassignUserSponsor, adminSearchUsers } from '../supabase/adminRepo.js';
+import {
+  adminGetUserNetwork,
+  adminGetUserState,
+  adminGrantSponsorship,
+  adminReassignUserSponsor,
+  adminReconcileUserSponsor,
+  adminSearchUsers,
+} from '../supabase/adminRepo.js';
 import { getQuotaPlanPresentation } from '../quota/quotaPresentation.js';
 import AdminUserSponsorshipPanel from './AdminUserSponsorshipPanel.jsx';
 
@@ -48,6 +55,7 @@ export default function AdminUserView({ config }) {
   const [selectedSponsorCandidate, setSelectedSponsorCandidate] = useState(null);
   const [sponsorReason, setSponsorReason] = useState('');
   const [sponsorChangeBusy, setSponsorChangeBusy] = useState(false);
+  const [sponsorReconcileBusy, setSponsorReconcileBusy] = useState(false);
   const [sponsorChangeConfirmOpen, setSponsorChangeConfirmOpen] = useState(false);
   const [sponsorFeedback, setSponsorFeedback] = useState(null);
   const [sponsorAuditBusy, setSponsorAuditBusy] = useState(false);
@@ -114,6 +122,7 @@ export default function AdminUserView({ config }) {
             email: r?.email || '—',
             userId: r?.user_id || '—',
             createdAt: r?.created_at || null,
+            sponsorUsername: r?.sponsor_username || r?.referrer_username || '',
             invested: safeNum(r?.balances?.invested || 0),
             holdings: r?.holdings || {},
             totalCotas: safeNum(r?.holdings?.cota10 || 0) + safeNum(r?.holdings?.cota50 || 0) + safeNum(r?.holdings?.cota100 || 0),
@@ -226,6 +235,39 @@ export default function AdminUserView({ config }) {
       });
     } finally {
       setSponsorChangeBusy(false);
+    }
+  };
+
+  const handleReconcileSponsor = async () => {
+    if (!selected?.id) {
+      setSponsorFeedback({ type: 'error', message: 'Selecione um usuário.' });
+      return;
+    }
+    setSponsorReconcileBusy(true);
+    setSponsorFeedback(null);
+    try {
+      const res = await adminReconcileUserSponsor({
+        userId: selected.id,
+        reason: sponsorReason || 'Reconciliação administrativa entre profiles e team_nodes',
+      });
+      if (!res.ok) {
+        setSponsorFeedback({ type: 'error', message: res.error || 'Não foi possível reconciliar o sponsor.' });
+        return;
+      }
+      setReloadTick((value) => value + 1);
+      setSponsorFeedback({
+        type: 'success',
+        message: res.data?.changed
+          ? 'Sponsor reconciliado com sucesso.'
+          : res.data?.message || 'Nenhum ajuste foi necessário na reconciliação.',
+      });
+    } catch (error) {
+      setSponsorFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Falha inesperada ao reconciliar o sponsor.',
+      });
+    } finally {
+      setSponsorReconcileBusy(false);
     }
   };
 
@@ -556,7 +598,7 @@ export default function AdminUserView({ config }) {
                     >
                       {u?.hasSponsor ? 'Com sponsor' : 'Sem sponsor'}
                     </span>
-                    {u?.hasSponsor ? (
+                        {u?.hasSponsor ? (
                       <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-black text-gray-600">
                         {u?.referrerUsername ? `@${u.referrerUsername}` : u?.sponsorEmail || 'Sponsor vinculado'}
                       </span>
@@ -655,9 +697,19 @@ export default function AdminUserView({ config }) {
                       <p className="text-sm font-black text-gray-900">Patrocinador atual</p>
                       <p className="mt-1 text-xs text-gray-500">Visualize o sponsor atual e faça a troca com auditoria completa.</p>
                     </div>
-                    <span className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
-                      {currentSponsor?.username ? 'Com sponsor' : 'Sem sponsor'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
+                        {currentSponsor?.username ? 'Com sponsor' : 'Sem sponsor'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleReconcileSponsor()}
+                        disabled={sponsorReconcileBusy}
+                        className="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-800 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {sponsorReconcileBusy ? 'Reconciliando...' : 'Reconciliar sponsor'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 min-[640px]:grid-cols-3 gap-3">
@@ -952,6 +1004,9 @@ export default function AdminUserView({ config }) {
                                   <p className="text-sm font-black text-gray-900 truncate">@{u.username}</p>
                                   <p className="mt-1 text-xs text-gray-500 truncate">{u.email}</p>
                                   <p className="mt-1 text-[11px] text-gray-500">Cadastro: {u.createdAt ? formatDate(u.createdAt) : '—'}</p>
+                                  <p className="mt-1 text-[11px] text-gray-500">
+                                    {u?.sponsorUsername ? `Sponsor: @${u.sponsorUsername}` : 'Sponsor:-'}
+                                  </p>
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
                                   <span

@@ -16,6 +16,7 @@ const mapNetworkRowsToLevels = (rows) =>
         email: row?.email || '—',
         userId: row?.user_id || '—',
         createdAt: row?.created_at || null,
+        sponsorUsername: row?.sponsor_username || row?.referrer_username || '',
         invested: safeNum(row?.balances?.invested || 0),
         holdings: row?.holdings || {},
         totalCotas:
