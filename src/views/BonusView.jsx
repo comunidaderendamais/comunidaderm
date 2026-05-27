@@ -7,7 +7,7 @@ import { fetchEliteCandidates } from '../supabase/eliteRepo.js';
 import { fetchMyTeamSummary } from '../supabase/dashboardRepo.js';
 import { RANKS } from '../team/teamEngine.js';
 
-function BonusOverviewSection({
+function BonusHeroSection({
   t,
   hasMovement,
   rankTitle,
@@ -170,7 +170,7 @@ export default function BonusView({ user, adminConfig, onOpenApn, lang }) {
 
   return (
     <div className="p-4 min-[540px]:p-6 max-w-6xl mx-auto space-y-6">
-      <BonusOverviewSection
+      <BonusHeroSection
         t={t}
         hasMovement={hasBonusMovement}
         rankTitle={translateRankTitle(currentRankTitle, t)}
@@ -423,4 +423,3 @@ export default function BonusView({ user, adminConfig, onOpenApn, lang }) {
     </div>
   );
 }
-

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBankByQuotaKey } from './adminStorage';
-import { adminGetUserNetwork, adminGetUserState, adminGrantSponsorship, adminSearchUsers } from '../supabase/adminRepo.js';
+import { adminGetUserNetwork, adminGetUserState, adminGrantSponsorship, adminReassignUserSponsor, adminSearchUsers } from '../supabase/adminRepo.js';
 import { getQuotaPlanPresentation } from '../quota/quotaPresentation.js';
 import AdminUserSponsorshipPanel from './AdminUserSponsorshipPanel.jsx';
 
@@ -34,6 +34,7 @@ const sumTx = (txs, predicate) =>
 
 export default function AdminUserView({ config }) {
   const [query, setQuery] = useState('');
+  const [sponsorFilter, setSponsorFilter] = useState('all');
   const [selectedKey, setSelectedKey] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -41,13 +42,30 @@ export default function AdminUserView({ config }) {
   const [networkLevels, setNetworkLevels] = useState([]);
   const [reloadTick, setReloadTick] = useState(0);
   const [sponsorshipBusy, setSponsorshipBusy] = useState(false);
+  const [sponsorSearch, setSponsorSearch] = useState('');
+  const [sponsorSearchLoading, setSponsorSearchLoading] = useState(false);
+  const [sponsorCandidates, setSponsorCandidates] = useState([]);
+  const [selectedSponsorCandidate, setSelectedSponsorCandidate] = useState(null);
+  const [sponsorReason, setSponsorReason] = useState('');
+  const [sponsorChangeBusy, setSponsorChangeBusy] = useState(false);
+  const [sponsorChangeConfirmOpen, setSponsorChangeConfirmOpen] = useState(false);
+  const [sponsorFeedback, setSponsorFeedback] = useState(null);
+  const [sponsorAuditBusy, setSponsorAuditBusy] = useState(false);
+  const [sponsorAuditRows, setSponsorAuditRows] = useState([]);
+  const [sponsorAuditAt, setSponsorAuditAt] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
       setLoading(true);
       try {
-        const res = await adminSearchUsers({ q: String(query || '').trim(), maxRows: 50 });
+        const res = await adminSearchUsers({
+          q: String(query || '').trim(),
+          maxRows: 50,
+          withoutSponsorOnly: sponsorFilter === 'without' || sponsorFilter === 'without_invested',
+          onlyWithSponsor: sponsorFilter === 'with',
+          withInvestmentOnly: sponsorFilter === 'without_invested',
+        });
         if (!cancelled) setUsers(res.ok ? res.users : []);
       } finally {
         if (!cancelled) setLoading(false);
@@ -57,7 +75,7 @@ export default function AdminUserView({ config }) {
     return () => {
       cancelled = true;
     };
-  }, [query]);
+  }, [query, sponsorFilter]);
 
   const filtered = useMemo(() => {
     return users.slice(0, 50);
@@ -115,6 +133,42 @@ export default function AdminUserView({ config }) {
     };
   }, [selected?.id, reloadTick]);
 
+  useEffect(() => {
+    setSponsorSearch('');
+    setSponsorCandidates([]);
+    setSelectedSponsorCandidate(null);
+    setSponsorReason('');
+    setSponsorChangeConfirmOpen(false);
+    setSponsorFeedback(null);
+  }, [selected?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const term = String(sponsorSearch || '').trim();
+    if (!selected?.id || term.length < 2) {
+      setSponsorCandidates([]);
+      setSponsorSearchLoading(false);
+      return undefined;
+    }
+
+    const run = async () => {
+      setSponsorSearchLoading(true);
+      try {
+        const res = await adminSearchUsers({ q: term, maxRows: 12 });
+        if (cancelled) return;
+        const rows = res.ok ? res.users.filter((item) => String(item?.id || '') !== String(selected.id || '')) : [];
+        setSponsorCandidates(rows);
+      } finally {
+        if (!cancelled) setSponsorSearchLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [sponsorSearch, selected?.id]);
+
   const handleGrantSponsorship = async ({ planKey, units, note }) => {
     if (!selected?.id) return { ok: false, error: 'Selecione um usuário.' };
     setSponsorshipBusy(true);
@@ -129,6 +183,69 @@ export default function AdminUserView({ config }) {
       return res;
     } finally {
       setSponsorshipBusy(false);
+    }
+  };
+
+  const handleRequestSponsorReassign = () => {
+    if (!selected?.id) {
+      setSponsorFeedback({ type: 'error', message: 'Selecione um usuário.' });
+      return;
+    }
+    if (!selectedSponsorCandidate?.id) {
+      setSponsorFeedback({ type: 'error', message: 'Selecione o novo patrocinador.' });
+      return;
+    }
+    setSponsorFeedback(null);
+    setSponsorChangeConfirmOpen(true);
+  };
+
+  const handleReassignSponsor = async () => {
+    if (!selected?.id || !selectedSponsorCandidate?.id) return;
+    setSponsorChangeBusy(true);
+    try {
+      const res = await adminReassignUserSponsor({
+        userId: selected.id,
+        sponsorId: selectedSponsorCandidate.id,
+        reason: sponsorReason,
+      });
+      if (!res.ok) {
+        setSponsorFeedback({ type: 'error', message: res.error || 'Não foi possível alterar o patrocinador.' });
+        return;
+      }
+      setSponsorSearch('');
+      setSponsorCandidates([]);
+      setSelectedSponsorCandidate(null);
+      setSponsorReason('');
+      setSponsorChangeConfirmOpen(false);
+      setReloadTick((value) => value + 1);
+      setSponsorFeedback({ type: 'success', message: 'Patrocinador alterado com sucesso.' });
+    } catch (error) {
+      setSponsorFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Falha inesperada ao alterar o patrocinador.',
+      });
+    } finally {
+      setSponsorChangeBusy(false);
+    }
+  };
+
+  const handleRunSponsorAudit = async () => {
+    setSponsorAuditBusy(true);
+    try {
+      const res = await adminSearchUsers({
+        q: '',
+        maxRows: 200,
+        withoutSponsorOnly: true,
+        withInvestmentOnly: sponsorFilter === 'without_invested',
+      });
+      if (!res.ok) {
+        alert(res.error || 'Não foi possível carregar a auditoria de patrocinadores.');
+        return;
+      }
+      setSponsorAuditRows(res.users);
+      setSponsorAuditAt(new Date().toISOString());
+    } finally {
+      setSponsorAuditBusy(false);
     }
   };
 
@@ -223,31 +340,202 @@ export default function AdminUserView({ config }) {
   }, [networkLevels]);
 
   const shown = selectedFull || selected;
+  const currentSponsor = shown?.sponsor || null;
+  const sponsorLogs = Array.isArray(shown?.sponsorLogs) ? shown.sponsorLogs : [];
+  const currentSponsorLabel = currentSponsor?.username ? `@${currentSponsor.username}` : 'sem patrocinador';
+  const nextSponsorLabel = selectedSponsorCandidate?.username ? `@${selectedSponsorCandidate.username}` : selectedSponsorCandidate?.email || 'novo patrocinador';
+  const sponsorAuditSummary = useMemo(() => {
+    const rows = Array.isArray(sponsorAuditRows) ? sponsorAuditRows : [];
+    const countQuotaUnits = (item) =>
+      safeNum(item?.holdings?.cota10 || 0) + safeNum(item?.holdings?.cota50 || 0) + safeNum(item?.holdings?.cota100 || 0);
+    const total = rows.length;
+    const invested = rows.filter((item) => safeNum(item?.balances?.invested || 0) > 0).length;
+    const withQuotas = rows.filter((item) => countQuotaUnits(item) > 0).length;
+    const createdLast7Days = rows.filter((item) => {
+      const createdAt = Date.parse(item?.createdAt || '');
+      if (!Number.isFinite(createdAt)) return false;
+      return Date.now() - createdAt <= 7 * 24 * 60 * 60 * 1000;
+    }).length;
+    return {
+      total,
+      invested,
+      withQuotas,
+      withoutQuotas: Math.max(0, total - withQuotas),
+      createdLast7Days,
+    };
+  }, [sponsorAuditRows]);
 
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-black text-gray-900">Usuários</h3>
-            <p className="text-sm text-gray-500 mt-1">Buscar por login, e-mail, userId ou uuid/id.</p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-black text-gray-900">Usuários</h3>
+              <p className="text-sm text-gray-500 mt-1">Buscar por login, e-mail, userId ou uuid/id.</p>
+            </div>
+            <div className="w-full lg:w-[420px]">
+              <label className="text-xs font-black text-gray-600">Buscar</label>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="ex: alfabrazil, email@..., rm_..., uuid..."
+                className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
+              />
+            </div>
           </div>
-          <div className="w-full lg:w-[420px]">
-            <label className="text-xs font-black text-gray-600">Buscar</label>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="ex: alfabrazil, email@..., rm_..., uuid..."
-              className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
-            />
+
+          <div>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSponsorFilter('all')}
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] ${sponsorFilter === 'all' ? 'border-violet-200 bg-violet-50 text-violet-800' : 'border-gray-200 bg-white text-gray-600'}`}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSponsorFilter('without')}
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] ${sponsorFilter === 'without' ? 'border-red-200 bg-red-50 text-red-800' : 'border-gray-200 bg-white text-gray-600'}`}
+                >
+                  Sem patrocinador
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSponsorFilter('with')}
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] ${sponsorFilter === 'with' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-600'}`}
+                >
+                  Com patrocinador
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSponsorFilter('without_invested')}
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] ${sponsorFilter === 'without_invested' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 bg-white text-gray-600'}`}
+                >
+                  Sem sponsor + investido
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleRunSponsorAudit()}
+                disabled={sponsorAuditBusy}
+                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-black text-gray-800 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sponsorAuditBusy ? 'Auditando sem sponsor...' : 'Auditar usuários sem sponsor'}
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-gray-500">
+              Use o filtro para localizar rapidamente usuários sem sponsor. A auditoria em lote só gera leitura operacional e não altera usuários antigos.
+            </p>
           </div>
         </div>
       </div>
 
+      {(sponsorAuditAt || sponsorAuditRows.length > 0) && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-gray-100 flex flex-col gap-2 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+            <div>
+              <p className="text-sm font-black text-gray-900">Auditoria operacional: usuários sem patrocinador</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Snapshot em lote para acompanhamento manual. Nenhum usuário foi alterado automaticamente.
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-gray-700">
+              {sponsorAuditAt ? `Atualizado em ${formatDate(sponsorAuditAt)}` : 'Sem snapshot'}
+            </span>
+          </div>
+
+          <div className="p-5">
+            <div className="grid grid-cols-1 min-[540px]:grid-cols-2 xl:grid-cols-4 gap-4">
+              <div className="rounded-2xl border border-red-100 bg-red-50/60 p-4">
+                <p className="text-xs text-gray-500">Total sem sponsor</p>
+                <p className="mt-1 text-xl font-black text-red-700">{sponsorAuditSummary.total}</p>
+              </div>
+              <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+                <p className="text-xs text-gray-500">Com investimento</p>
+                <p className="mt-1 text-xl font-black text-amber-700">{sponsorAuditSummary.invested}</p>
+              </div>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
+                <p className="text-xs text-gray-500">Com cotas</p>
+                <p className="mt-1 text-xl font-black text-sky-700">{sponsorAuditSummary.withQuotas}</p>
+              </div>
+              <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4">
+                <p className="text-xs text-gray-500">Cadastros últimos 7 dias</p>
+                <p className="mt-1 text-xl font-black text-violet-700">{sponsorAuditSummary.createdLast7Days}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50/60 overflow-hidden">
+              <div className="border-b border-gray-100 px-4 py-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-black text-gray-900">Usuários encontrados na auditoria</p>
+                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-black text-gray-700">
+                  máx. 200
+                </span>
+              </div>
+              <div className="max-h-[260px] overflow-y-auto">
+                {sponsorAuditRows.length === 0 ? (
+                  <p className="p-4 text-sm text-gray-500">Nenhum usuário sem patrocinador encontrado no snapshot atual.</p>
+                ) : (
+                  sponsorAuditRows.map((item) => {
+                    const itemId = String(item?.id || '');
+                    const quotaUnits =
+                      safeNum(item?.holdings?.cota10 || 0) + safeNum(item?.holdings?.cota50 || 0) + safeNum(item?.holdings?.cota100 || 0);
+                    return (
+                      <button
+                        key={`audit-${itemId}`}
+                        type="button"
+                        onClick={() => {
+                          setQuery(item?.username || item?.email || itemId);
+                          setSponsorFilter('all');
+                          setSelectedKey(itemId);
+                        }}
+                        className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-white"
+                      >
+                        <div className="flex flex-col gap-2 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-gray-900 truncate">@{item?.username || '—'}</p>
+                            <p className="mt-1 text-xs text-gray-500 truncate">{item?.email || '—'}</p>
+                            <p className="mt-1 text-[11px] text-gray-500">Cadastro: {item?.createdAt ? formatDate(item.createdAt) : '—'}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-black text-red-800">
+                              Sem sponsor
+                            </span>
+                            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-black text-gray-700">
+                              Investido: {formatMoney(item?.balances?.invested || 0)}
+                            </span>
+                            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-black text-gray-700">
+                              Cotas: {quotaUnits}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-100">
-            <p className="text-xs text-gray-500">Resultados (máx. 50)</p>
+            <p className="text-xs text-gray-500">
+              {sponsorFilter === 'without'
+                ? 'Resultados sem patrocinador'
+                : sponsorFilter === 'with'
+                  ? 'Resultados com patrocinador'
+                  : sponsorFilter === 'without_invested'
+                    ? 'Resultados sem sponsor + com investimento'
+                    : 'Resultados'}{' '}
+              (máx. 50)
+            </p>
           </div>
           <div className="max-h-[560px] overflow-y-auto">
             {filtered.map((u) => {
@@ -262,6 +550,18 @@ export default function AdminUserView({ config }) {
                 >
                   <p className="text-sm font-black text-gray-900 truncate">@{u?.username || '—'}</p>
                   <p className="text-xs text-gray-500 truncate">{u?.email || '—'}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] ${u?.hasSponsor ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}
+                    >
+                      {u?.hasSponsor ? 'Com sponsor' : 'Sem sponsor'}
+                    </span>
+                    {u?.hasSponsor ? (
+                      <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-black text-gray-600">
+                        {u?.referrerUsername ? `@${u.referrerUsername}` : u?.sponsorEmail || 'Sponsor vinculado'}
+                      </span>
+                    ) : null}
+                  </div>
                 </button>
               );
             })}
@@ -346,6 +646,181 @@ export default function AdminUserView({ config }) {
                   <div className="bg-white rounded-2xl border border-gray-200 p-5">
                     <p className="text-xs text-gray-500">Total sacado</p>
                     <p className="text-lg font-black text-gray-900">{formatMoney(selectedTotals.totalWithdrawn)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/50 p-5">
+                  <div className="flex flex-col gap-2 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-gray-900">Patrocinador atual</p>
+                      <p className="mt-1 text-xs text-gray-500">Visualize o sponsor atual e faça a troca com auditoria completa.</p>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
+                      {currentSponsor?.username ? 'Com sponsor' : 'Sem sponsor'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 min-[640px]:grid-cols-3 gap-3">
+                    <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Username</p>
+                      <p className="mt-1 text-sm font-black text-gray-900 break-all">{currentSponsor?.username ? `@${currentSponsor.username}` : '—'}</p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">E-mail</p>
+                      <p className="mt-1 text-sm font-black text-gray-900 break-all">{currentSponsor?.email || '—'}</p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">ID sponsor</p>
+                      <p className="mt-1 text-sm font-black text-gray-900 break-all">{currentSponsor?.id || '—'}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+                      <div>
+                        <label className="text-xs font-black text-gray-600">Buscar novo patrocinador</label>
+                        <input
+                          value={sponsorSearch}
+                          onChange={(e) => setSponsorSearch(e.target.value)}
+                          placeholder="Digite login, e-mail ou uuid do sponsor"
+                          className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
+                        />
+                      </div>
+
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50/60 max-h-[220px] overflow-y-auto">
+                        {sponsorSearchLoading ? <p className="p-4 text-sm text-gray-500">Buscando patrocinadores...</p> : null}
+                        {!sponsorSearchLoading && sponsorSearch.trim().length < 2 ? (
+                          <p className="p-4 text-sm text-gray-500">Digite pelo menos 2 caracteres para buscar.</p>
+                        ) : null}
+                        {!sponsorSearchLoading && sponsorSearch.trim().length >= 2 && sponsorCandidates.length === 0 ? (
+                          <p className="p-4 text-sm text-gray-500">Nenhum patrocinador encontrado.</p>
+                        ) : null}
+                        {sponsorCandidates.map((candidate) => {
+                          const active = String(selectedSponsorCandidate?.id || '') === String(candidate?.id || '');
+                          return (
+                            <button
+                              key={String(candidate?.id || candidate?.email || Math.random())}
+                              type="button"
+                              onClick={() => setSelectedSponsorCandidate(candidate)}
+                              className={`w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 ${active ? 'bg-emerald-50' : 'bg-transparent'}`}
+                            >
+                              <p className="text-sm font-black text-gray-900 truncate">@{candidate?.username || '—'}</p>
+                              <p className="mt-1 text-xs text-gray-500 truncate">{candidate?.email || '—'}</p>
+                              <p className="mt-1 text-[11px] text-gray-400 truncate">{candidate?.id || '—'}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Novo patrocinador selecionado</p>
+                        <p className="mt-1 text-sm font-black text-gray-900">{selectedSponsorCandidate?.username ? `@${selectedSponsorCandidate.username}` : '—'}</p>
+                        <p className="mt-1 text-xs text-gray-500 break-all">{selectedSponsorCandidate?.email || 'Selecione um usuário na busca ao lado.'}</p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-black text-gray-600">Motivo da alteração</label>
+                        <textarea
+                          value={sponsorReason}
+                          onChange={(e) => setSponsorReason(e.target.value)}
+                          rows={4}
+                          placeholder="Ex.: cadastro sem patrocinador, correção operacional, ajuste solicitado..."
+                          className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleRequestSponsorReassign}
+                        disabled={sponsorChangeBusy || !selectedSponsorCandidate?.id}
+                        className="w-full rounded-xl bg-[#00FF00] px-4 py-3 text-sm font-black text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {sponsorChangeBusy ? 'Alterando patrocinador...' : 'Alterar patrocinador'}
+                      </button>
+
+                      {sponsorFeedback ? (
+                        <div
+                          className={`rounded-2xl border px-4 py-3 text-sm ${
+                            sponsorFeedback.type === 'success'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              : 'border-red-200 bg-red-50 text-red-800'
+                          }`}
+                        >
+                          {sponsorFeedback.message}
+                        </div>
+                      ) : null}
+
+                      {sponsorChangeConfirmOpen ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+                          <p className="text-sm font-black text-amber-900">Confirmar troca de patrocinador</p>
+                          <p className="mt-2 text-sm text-amber-900">
+                            Usuário: <span className="font-black">@{shown?.username || 'usuario'}</span>
+                          </p>
+                          <p className="mt-1 text-sm text-amber-900">
+                            De: <span className="font-black">{currentSponsorLabel}</span>
+                          </p>
+                          <p className="mt-1 text-sm text-amber-900">
+                            Para: <span className="font-black">{nextSponsorLabel}</span>
+                          </p>
+                          <p className="mt-2 text-xs text-amber-800">
+                            Essa ação atualiza o sponsor do usuário e registra log administrativo.
+                          </p>
+                          <div className="mt-4 flex flex-col gap-2 min-[540px]:flex-row">
+                            <button
+                              type="button"
+                              onClick={() => void handleReassignSponsor()}
+                              disabled={sponsorChangeBusy}
+                              className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-black text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {sponsorChangeBusy ? 'Confirmando...' : 'Confirmar alteração'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSponsorChangeConfirmOpen(false)}
+                              disabled={sponsorChangeBusy}
+                              className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-black text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                    <div className="border-b border-gray-100 px-4 py-3">
+                      <p className="text-sm font-black text-gray-900">Histórico de alterações de patrocinador</p>
+                      <p className="mt-1 text-xs text-gray-500">Log completo com sponsor anterior, sponsor novo, admin responsável, data e motivo.</p>
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto">
+                      {sponsorLogs.length === 0 ? (
+                        <p className="p-4 text-sm text-gray-500">Nenhuma alteração registrada para este usuário.</p>
+                      ) : (
+                        sponsorLogs.map((log) => (
+                          <div key={String(log?.id || log?.createdAt || Math.random())} className="border-b border-gray-100 px-4 py-4 last:border-b-0">
+                            <div className="flex flex-col gap-2 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-gray-900">
+                                  {log?.previousSponsorUsername ? `@${log.previousSponsorUsername}` : 'Sem sponsor'} {' -> '} @{log?.nextSponsorUsername || '—'}
+                                </p>
+                                <p className="mt-1 text-xs text-gray-500">
+                                  Admin: <span className="font-black text-gray-700">{log?.actorEmail || '—'}</span> • {log?.createdAt ? formatDate(log.createdAt) : '—'}
+                                </p>
+                              </div>
+                              <span className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-black text-gray-700 uppercase tracking-[0.18em]">
+                                {log?.source || 'ADMIN_PANEL'}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm text-gray-600">
+                              Motivo: <span className="font-black text-gray-800">{log?.reason || 'Não informado.'}</span>
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

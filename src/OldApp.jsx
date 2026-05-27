@@ -36,14 +36,30 @@ const stableSerialize = (value) => {
   }
 };
 
-const formatSupportTime = (iso) => {
+const resolveRecordQuery = () => {
   try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const url = new URL(window.location.href);
+    const raw = String(url.searchParams.get('record') || '').trim().toLowerCase();
+    if (raw === '1' || raw === 'true' || raw === 'yes') return 'record=1';
+    return '';
   } catch {
     return '';
   }
 };
+
+const withRecordQuery = (path) => {
+  const record = resolveRecordQuery();
+  return record ? `${path}?${record}` : path;
+};
+
+const ADMIN_EMAILS = new Set([
+  'rmadmin@gmail.com',
+  'comunidaderendamais@gmail.com',
+  'telexrn@gmail.com',
+  'pauloalberto5000@gmail.com',
+  'wilson270043@gmail.com',
+  'samiroliver.oliver@gmail.com',
+]);
 
 const APN_CHIP_BASE = 'px-3 py-2 rounded-xl text-sm font-bold border transition';
 
@@ -60,6 +76,15 @@ const getDocLangDefault = (lang) => {
   if (key === 'es') return 'es';
   if (key === 'fr') return 'fr';
   return 'pt';
+};
+
+const formatSupportTime = (iso) => {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
 };
 
 function EmbeddedSupportModal({ isOpen, channel, channelName, isOnline, queue, user, onClose, t }) {
@@ -397,15 +422,6 @@ function EmbeddedApnPdfModal({ isOpen, initialPage = 1, title, onClose, shortcut
   );
 }
 
-const ADMIN_EMAILS = new Set([
-  'rmadmin@gmail.com',
-  'comunidaderendamais@gmail.com',
-  'telexrn@gmail.com',
-  'pauloalberto5000@gmail.com',
-  'wilson270043@gmail.com',
-  'samiroliver.oliver@gmail.com',
-]);
-
 const App = () => {
   const [user, setUser] = useState(null);
   const [lang, setLang] = useState(() => getInitialLang());
@@ -457,7 +473,7 @@ const App = () => {
     try {
       const current = String(window.location?.pathname || '');
       if (current.startsWith('/dashboard')) return;
-      window.history.replaceState({}, '', '/dashboard');
+      window.history.replaceState({}, '', withRecordQuery('/dashboard'));
     } catch {}
     try {
       const nextView = String(sessionStorage.getItem('rmPostLoginView') || '').trim();
@@ -682,7 +698,7 @@ const App = () => {
 
     if (isRegister) void fetchPublicStats().then((r) => r.ok && setPublicStats(r.stats));
     try {
-      window.history.replaceState({}, '', '/dashboard');
+      window.history.replaceState({}, '', withRecordQuery('/dashboard'));
     } catch {}
   };
 
@@ -690,7 +706,7 @@ const App = () => {
     await signOutFromSupabase();
     setUser(null);
     try {
-      window.history.replaceState({}, '', '/projeto');
+      window.history.replaceState({}, '', withRecordQuery('/projeto'));
     } catch {}
   };
 

@@ -11,6 +11,12 @@ const mapProfileRowToUser = (p) => ({
   userId: p?.user_id || null,
   email: p?.email || null,
   username: p?.username || null,
+  name: p?.name || null,
+  referrerUsername: p?.referrer_username || null,
+  sponsorId: p?.sponsor_id || null,
+  sponsorEmail: p?.sponsor_email || null,
+  sponsorName: p?.sponsor_name || null,
+  hasSponsor: Boolean(p?.has_sponsor),
   isAdmin: Boolean(p?.is_admin),
   blocked: Boolean(p?.blocked),
   createdAt: p?.created_at || null,
@@ -37,11 +43,73 @@ const mapTxRowToTx = (row) => {
   };
 };
 
-export const adminSearchUsers = async ({ q = '', maxRows = 50 } = {}) => {
+const mapSponsorRow = (row) => {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    id: row?.id || null,
+    userId: row?.user_id || null,
+    username: row?.username || null,
+    email: row?.email || null,
+    name: row?.name || null,
+  };
+};
+
+const mapSponsorLogRow = (row) => ({
+  id: row?.id || null,
+  profileId: row?.profile_id || null,
+  previousSponsorId: row?.previous_sponsor_id || null,
+  previousSponsorUsername: row?.previous_sponsor_username || null,
+  previousSponsorEmail: row?.previous_sponsor_email || null,
+  nextSponsorId: row?.next_sponsor_id || null,
+  nextSponsorUsername: row?.next_sponsor_username || null,
+  nextSponsorEmail: row?.next_sponsor_email || null,
+  actorId: row?.actor_id || null,
+  actorEmail: row?.actor_email || null,
+  reason: row?.reason || '',
+  source: row?.source || null,
+  requestPayload: row?.request_payload || {},
+  resultPayload: row?.result_payload || {},
+  createdAt: row?.created_at || null,
+});
+
+export const adminSearchUsers = async ({
+  q = '',
+  maxRows = 50,
+  withoutSponsorOnly = false,
+  onlyWithSponsor = false,
+  withInvestmentOnly = false,
+} = {}) => {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase não configurado.', users: [] };
 
-  const { data, error } = await client.rpc('admin_search_users', { q, max_rows: maxRows });
+  const newParams = {
+    q,
+    max_rows: maxRows,
+    without_sponsor_only: Boolean(withoutSponsorOnly),
+    only_with_sponsor: Boolean(onlyWithSponsor),
+    with_investment_only: Boolean(withInvestmentOnly),
+  };
+
+  let { data, error } = await client.rpc('admin_search_users', newParams);
+
+  // Backward compatibility: if the remote Supabase still has the old 2-arg RPC,
+  // retry with the previous signature so the Admin list keeps loading.
+  if (error) {
+    const message = String(error?.message || '').toLowerCase();
+    const missingNewSignature =
+      message.includes('admin_search_users') &&
+      (message.includes('does not exist') || message.includes('function') || message.includes('schema cache'));
+
+    if (missingNewSignature) {
+      const fallback = await client.rpc('admin_search_users', {
+        q,
+        max_rows: maxRows,
+      });
+      data = fallback.data;
+      error = fallback.error;
+    }
+  }
+
   if (error) return { ok: false, error: error.message, users: [] };
 
   const rows = Array.isArray(data) ? data : [];
@@ -68,6 +136,8 @@ export const adminGetUserState = async ({ userId, maxTransactions = 500 } = {}) 
       usdcArbitrum: String(wallets?.usdc_arbitrum || ''),
     },
     transactions: txs.map(mapTxRowToTx),
+    sponsor: mapSponsorRow(data?.sponsor || null),
+    sponsorLogs: Array.isArray(data?.sponsorLogs) ? data.sponsorLogs.map(mapSponsorLogRow) : [],
   };
 
   return { ok: true, error: null, user };
@@ -119,6 +189,21 @@ export const adminGrantSponsorship = async ({ userId, planKey, units = 1, note }
     plan_key_value: String(planKey || '').trim(),
     units_value: Math.max(1, Math.floor(safeNum(units || 1))),
     note_value: note ? String(note) : null,
+  });
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || null };
+};
+
+export const adminReassignUserSponsor = async ({ userId, sponsorId, reason } = {}) => {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'Supabase não configurado.', data: null };
+  if (!userId) return { ok: false, error: 'Usuário inválido.', data: null };
+  if (!sponsorId) return { ok: false, error: 'Novo patrocinador inválido.', data: null };
+
+  const { data, error } = await client.rpc('admin_reassign_user_sponsor', {
+    target_id: userId,
+    new_referrer_id: sponsorId,
+    reason_value: reason ? String(reason) : null,
   });
   if (error) return { ok: false, error: error.message, data: null };
   return { ok: true, error: null, data: data || null };
