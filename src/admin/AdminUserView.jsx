@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBankByQuotaKey } from './adminStorage';
 import {
+  adminChangeUserUsername,
   adminGetUserNetwork,
   adminGetUserState,
   adminGrantSponsorship,
@@ -48,6 +49,11 @@ export default function AdminUserView({ config }) {
   const [selectedFull, setSelectedFull] = useState(null);
   const [networkLevels, setNetworkLevels] = useState([]);
   const [reloadTick, setReloadTick] = useState(0);
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [usernameReason, setUsernameReason] = useState('');
+  const [usernameChangeBusy, setUsernameChangeBusy] = useState(false);
+  const [usernameChangeConfirmOpen, setUsernameChangeConfirmOpen] = useState(false);
+  const [usernameFeedback, setUsernameFeedback] = useState(null);
   const [sponsorshipBusy, setSponsorshipBusy] = useState(false);
   const [sponsorSearch, setSponsorSearch] = useState('');
   const [sponsorSearchLoading, setSponsorSearchLoading] = useState(false);
@@ -83,7 +89,7 @@ export default function AdminUserView({ config }) {
     return () => {
       cancelled = true;
     };
-  }, [query, sponsorFilter]);
+  }, [query, sponsorFilter, reloadTick]);
 
   const filtered = useMemo(() => {
     return users.slice(0, 50);
@@ -143,6 +149,10 @@ export default function AdminUserView({ config }) {
   }, [selected?.id, reloadTick]);
 
   useEffect(() => {
+    setUsernameDraft(String(selected?.username || ''));
+    setUsernameReason('');
+    setUsernameChangeConfirmOpen(false);
+    setUsernameFeedback(null);
     setSponsorSearch('');
     setSponsorCandidates([]);
     setSelectedSponsorCandidate(null);
@@ -150,6 +160,10 @@ export default function AdminUserView({ config }) {
     setSponsorChangeConfirmOpen(false);
     setSponsorFeedback(null);
   }, [selected?.id]);
+
+  useEffect(() => {
+    setUsernameDraft(String(selectedFull?.username || selected?.username || ''));
+  }, [selected?.id, selectedFull?.username]);
 
   useEffect(() => {
     let cancelled = false;
@@ -192,6 +206,54 @@ export default function AdminUserView({ config }) {
       return res;
     } finally {
       setSponsorshipBusy(false);
+    }
+  };
+
+  const handleRequestUsernameChange = () => {
+    if (!selected?.id) {
+      setUsernameFeedback({ type: 'error', message: 'Selecione um usuário.' });
+      return;
+    }
+    const normalizedUsername = String(usernameDraft || '').trim().toLowerCase();
+    if (!normalizedUsername) {
+      setUsernameFeedback({ type: 'error', message: 'Digite o novo login.' });
+      return;
+    }
+    if (normalizedUsername === String(shown?.username || '').trim().toLowerCase()) {
+      setUsernameFeedback({ type: 'error', message: 'Informe um login diferente do atual.' });
+      return;
+    }
+    if (!String(usernameReason || '').trim()) {
+      setUsernameFeedback({ type: 'error', message: 'Informe o motivo da alteração.' });
+      return;
+    }
+    setUsernameFeedback(null);
+    setUsernameChangeConfirmOpen(true);
+  };
+
+  const handleChangeUsername = async () => {
+    if (!selected?.id) return;
+    setUsernameChangeBusy(true);
+    try {
+      const res = await adminChangeUserUsername({
+        userId: selected.id,
+        username: usernameDraft,
+        reason: usernameReason,
+      });
+      if (!res.ok) {
+        setUsernameFeedback({ type: 'error', message: res.error || 'Não foi possível alterar o login.' });
+        return;
+      }
+      setUsernameChangeConfirmOpen(false);
+      setReloadTick((value) => value + 1);
+      setUsernameFeedback({ type: 'success', message: `Login alterado para @${res.data?.username || String(usernameDraft).trim().toLowerCase()}.` });
+    } catch (error) {
+      setUsernameFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Falha inesperada ao alterar o login.',
+      });
+    } finally {
+      setUsernameChangeBusy(false);
     }
   };
 
@@ -384,6 +446,7 @@ export default function AdminUserView({ config }) {
   const shown = selectedFull || selected;
   const currentSponsor = shown?.sponsor || null;
   const sponsorLogs = Array.isArray(shown?.sponsorLogs) ? shown.sponsorLogs : [];
+  const usernameLogs = Array.isArray(shown?.usernameLogs) ? shown.usernameLogs : [];
   const currentSponsorLabel = currentSponsor?.username ? `@${currentSponsor.username}` : 'sem patrocinador';
   const nextSponsorLabel = selectedSponsorCandidate?.username ? `@${selectedSponsorCandidate.username}` : selectedSponsorCandidate?.email || 'novo patrocinador';
   const sponsorAuditSummary = useMemo(() => {
@@ -638,6 +701,107 @@ export default function AdminUserView({ config }) {
                   </div>
                 </div>
 
+                <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/60 p-5">
+                  <div className="flex flex-col gap-2 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-gray-900">Editar login</p>
+                      <p className="mt-1 text-xs text-gray-500">Altera o username do perfil, sincroniza referências e registra auditoria administrativa.</p>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-sky-700">
+                      Atual: @{shown?.username || '—'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+                      <div>
+                        <label className="text-xs font-black text-gray-600">Novo login</label>
+                        <input
+                          value={usernameDraft}
+                          onChange={(e) => setUsernameDraft(String(e.target.value || '').toLowerCase())}
+                          placeholder="Digite o novo username"
+                          className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500">O login será salvo em minúsculo e precisa ser único.</p>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Prévia</p>
+                        <p className="mt-1 text-sm font-black text-gray-900">
+                          {String(usernameDraft || '').trim() ? `@${String(usernameDraft || '').trim().toLowerCase()}` : '—'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-black text-gray-600">Motivo da alteração</label>
+                        <textarea
+                          value={usernameReason}
+                          onChange={(e) => setUsernameReason(e.target.value)}
+                          rows={4}
+                          placeholder="Ex.: correção cadastral, padronização de login, ajuste solicitado..."
+                          className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-[#00FF00]"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleRequestUsernameChange}
+                        disabled={usernameChangeBusy || !String(usernameDraft || '').trim()}
+                        className="w-full rounded-xl bg-[#00FF00] px-4 py-3 text-sm font-black text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {usernameChangeBusy ? 'Alterando login...' : 'Editar login'}
+                      </button>
+
+                      {usernameFeedback ? (
+                        <div
+                          className={`rounded-2xl border px-4 py-3 text-sm ${
+                            usernameFeedback.type === 'success'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              : 'border-red-200 bg-red-50 text-red-800'
+                          }`}
+                        >
+                          {usernameFeedback.message}
+                        </div>
+                      ) : null}
+
+                      {usernameChangeConfirmOpen ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+                          <p className="text-sm font-black text-amber-900">Confirmar alteração de login</p>
+                          <p className="mt-2 text-sm text-amber-900">
+                            Usuário: <span className="font-black">@{shown?.username || 'usuario'}</span>
+                          </p>
+                          <p className="mt-1 text-sm text-amber-900">
+                            Novo login: <span className="font-black">@{String(usernameDraft || '').trim().toLowerCase() || '—'}</span>
+                          </p>
+                          <p className="mt-2 text-xs text-amber-800">
+                            Essa ação atualiza o perfil, sincroniza referências por sponsor e registra log administrativo.
+                          </p>
+                          <div className="mt-4 flex flex-col gap-2 min-[540px]:flex-row">
+                            <button
+                              type="button"
+                              onClick={() => void handleChangeUsername()}
+                              disabled={usernameChangeBusy}
+                              className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-black text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {usernameChangeBusy ? 'Confirmando...' : 'Confirmar alteração'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setUsernameChangeConfirmOpen(false)}
+                              disabled={usernameChangeBusy}
+                              className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-black text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mt-5 grid grid-cols-1 min-[540px]:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-gray-50 rounded-2xl border border-gray-100 p-5">
                     <p className="text-xs text-gray-500">Total investido</p>
@@ -857,6 +1021,39 @@ export default function AdminUserView({ config }) {
                               <div className="min-w-0">
                                 <p className="text-sm font-black text-gray-900">
                                   {log?.previousSponsorUsername ? `@${log.previousSponsorUsername}` : 'Sem sponsor'} {' -> '} @{log?.nextSponsorUsername || '—'}
+                                </p>
+                                <p className="mt-1 text-xs text-gray-500">
+                                  Admin: <span className="font-black text-gray-700">{log?.actorEmail || '—'}</span> • {log?.createdAt ? formatDate(log.createdAt) : '—'}
+                                </p>
+                              </div>
+                              <span className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-black text-gray-700 uppercase tracking-[0.18em]">
+                                {log?.source || 'ADMIN_PANEL'}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm text-gray-600">
+                              Motivo: <span className="font-black text-gray-800">{log?.reason || 'Não informado.'}</span>
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                    <div className="border-b border-gray-100 px-4 py-3">
+                      <p className="text-sm font-black text-gray-900">Histórico de alterações de login</p>
+                      <p className="mt-1 text-xs text-gray-500">Log completo com username anterior, novo login, admin responsável, data e motivo.</p>
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto">
+                      {usernameLogs.length === 0 ? (
+                        <p className="p-4 text-sm text-gray-500">Nenhuma alteração de login registrada para este usuário.</p>
+                      ) : (
+                        usernameLogs.map((log) => (
+                          <div key={String(log?.id || log?.createdAt || Math.random())} className="border-b border-gray-100 px-4 py-4 last:border-b-0">
+                            <div className="flex flex-col gap-2 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-gray-900">
+                                  @{log?.previousUsername || '—'} {' -> '} @{log?.nextUsername || '—'}
                                 </p>
                                 <p className="mt-1 text-xs text-gray-500">
                                   Admin: <span className="font-black text-gray-700">{log?.actorEmail || '—'}</span> • {log?.createdAt ? formatDate(log.createdAt) : '—'}

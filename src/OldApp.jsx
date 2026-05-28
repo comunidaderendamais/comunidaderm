@@ -324,14 +324,14 @@ function EmbeddedApnPdfModal({ isOpen, initialPage = 1, title, onClose, shortcut
 
   const safePage = Math.max(1, Number.isFinite(Number(page)) ? Number(page) : 1);
   const file = APN_PDF_FILES[docLang] || APN_PDF_FILES.pt;
-  const src = `/apn/${file}#page=${safePage}`;
+  const src = `/apn/${file}#page=${safePage}&zoom=page-fit`;
 
   return (
     <div className="fixed inset-0 z-[120]">
       <div className="absolute inset-0 bg-black/60" onClick={() => onClose?.()}></div>
 
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(1200px,94vw)] h-[min(820px,92vh)] bg-white rounded-2xl shadow-2xl overflow-hidden border border-[#8A2BE2]">
-        <div className="bg-[#1A1A1A] text-white border-b border-[#8A2BE2] px-4 py-3 flex items-center justify-between gap-3">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[96vw] h-[94vh] sm:w-[min(1200px,94vw)] sm:h-[min(820px,92vh)] bg-white rounded-2xl shadow-2xl overflow-hidden border border-[#8A2BE2] flex flex-col">
+        <div className="bg-[#1A1A1A] text-white border-b border-[#8A2BE2] px-4 py-3 flex items-center justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <p className="text-xs text-gray-300">{tr.apnOfficialLabel}</p>
             <h3 className="text-lg font-black truncate">{title || tr.apnPresentation}</h3>
@@ -349,7 +349,7 @@ function EmbeddedApnPdfModal({ isOpen, initialPage = 1, title, onClose, shortcut
           </div>
         </div>
 
-        <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex flex-col gap-3">
+        <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex flex-col gap-3 shrink-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2">
               <span className="text-sm font-bold text-gray-700">{tr.apnPdfLanguageLabel}</span>
@@ -395,26 +395,31 @@ function EmbeddedApnPdfModal({ isOpen, initialPage = 1, title, onClose, shortcut
                   const n = Number(raw);
                   if (Number.isFinite(n)) setPage(n);
                 }}
-                className="w-20 bg-transparent text-sm font-black text-gray-900 outline-none"
+                className="w-16 bg-transparent text-sm font-black text-gray-900 outline-none"
                 inputMode="numeric"
               />
             </div>
-
-            {shortcuts.map((s) => (
-              <button
-                key={`${s.page}-${s.label}`}
-                type="button"
-                onClick={() => setPage(s.page)}
-                className={`${APN_CHIP_BASE} bg-white text-gray-700 border-gray-200 hover:border-[#00FF00]`}
-              >
-                {s.label}
-              </button>
-            ))}
           </div>
+
+          {shortcuts.length ? (
+            <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+              {shortcuts.map((s) => (
+                <button
+                  key={`${s.page}-${s.label}`}
+                  type="button"
+                  onClick={() => setPage(s.page)}
+                  className={`${APN_CHIP_BASE} whitespace-nowrap bg-white text-gray-700 border-gray-200 hover:border-[#00FF00]`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <p className="text-xs text-gray-500">{tr.apnTip}</p>
         </div>
 
-        <div className="h-[calc(100%-132px)] bg-black">
+        <div className="flex-1 min-h-0 bg-black">
           <iframe title="APN Renda Mais" src={src} className="w-full h-full" />
         </div>
       </div>

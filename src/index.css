@@ -46,11 +46,15 @@ body {
 .rm-neon-banner {
   position: relative;
   overflow: hidden;
+  isolation: isolate;
+  transform: translateZ(0);
   border-radius: var(--rm-neon-radius, 34px);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.06),
     0 0 38px rgba(0, 255, 0, 0.16),
     0 0 58px rgba(138, 43, 226, 0.14);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 .rm-neon-banner::before {
@@ -61,6 +65,9 @@ body {
   background: conic-gradient(from 180deg, rgba(0, 255, 0, 0.95), rgba(138, 43, 226, 0.9), rgba(0, 255, 0, 0.95));
   animation: rm-neon-spin var(--rm-neon-spin-duration, 5.5s) linear infinite;
   z-index: 0;
+  pointer-events: none;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .rm-neon-banner::after {
@@ -70,8 +77,10 @@ body {
   border-radius: calc(var(--rm-neon-radius, 34px) - 2px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(14px);
   z-index: 0;
+  pointer-events: none;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .rm-neon-banner-content {

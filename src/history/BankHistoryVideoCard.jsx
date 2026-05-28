@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { getVideoOrientation, getYoutubeEmbedUrl, getYoutubeOrientation, isYoutubeUrl } from './bankHistoryMedia.js';
 
 const wrapperBaseClass = 'mx-auto w-full';
-const portraitWrapperClass = `${wrapperBaseClass} max-w-[420px]`;
-const landscapeWrapperClass = `${wrapperBaseClass} max-w-[980px]`;
+const portraitWrapperClass = `${wrapperBaseClass} sm:max-w-[460px]`;
+const landscapeWrapperClass = `${wrapperBaseClass} lg:max-w-[980px]`;
 
 export default function BankHistoryVideoCard({ url, title }) {
   const [meta, setMeta] = useState(null);
@@ -40,7 +40,7 @@ export default function BankHistoryVideoCard({ url, title }) {
                 setMeta({ width: videoWidth, height: videoHeight });
               }
             }}
-            className="w-full max-h-[65vh] bg-black object-contain"
+            className={`w-full bg-black object-contain ${isPortrait ? 'max-h-[72vh] sm:max-h-[75vh]' : 'max-h-[65vh] sm:max-h-[70vh]'}`}
           />
         )}
       </div>

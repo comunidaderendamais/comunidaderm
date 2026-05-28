@@ -79,8 +79,8 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t,
     <div className="fixed inset-0 z-[100]">
       <div className="absolute inset-0 bg-black/60" onClick={overlayClose}></div>
 
-      <div className={`absolute ${isFullscreen ? 'inset-0' : 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(1100px,92vw)] h-[min(720px,88vh)]'} bg-white rounded-2xl shadow-2xl overflow-hidden border border-[#8A2BE2]`}>
-        <div className="bg-[#1A1A1A] text-white border-b border-[#8A2BE2] px-4 py-3 flex items-center justify-between gap-3">
+      <div className={`absolute ${isFullscreen ? 'inset-0' : 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[96vw] h-[92vh] sm:w-[min(1100px,92vw)] sm:h-[min(720px,88vh)]'} bg-white rounded-2xl shadow-2xl overflow-hidden border border-[#8A2BE2] flex flex-col`}>
+        <div className="bg-[#1A1A1A] text-white border-b border-[#8A2BE2] px-4 py-3 flex items-center justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <p className="text-xs text-gray-300">{tr.historyTitle}</p>
             <h3 className="text-lg font-black truncate">{bankName || 'Banca'}</h3>
@@ -107,12 +107,12 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t,
           </div>
         </div>
 
-        <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex flex-col gap-3 shrink-0">
+          <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
             <button
               type="button"
               onClick={() => setSelectedDate(today)}
-              className={`${chipBase} ${selectedDate === today ? 'bg-[#00FF00] text-black border-[#00FF00]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#00FF00]'}`}
+              className={`${chipBase} whitespace-nowrap ${selectedDate === today ? 'bg-[#00FF00] text-black border-[#00FF00]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#00FF00]'}`}
             >
               <span className="inline-flex items-center gap-2">
                 <Clock size={16} /> {tr.historyToday}
@@ -121,12 +121,12 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t,
             <button
               type="button"
               onClick={() => setSelectedDate(yesterday)}
-              className={`${chipBase} ${selectedDate === yesterday ? 'bg-[#00FF00] text-black border-[#00FF00]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#00FF00]'}`}
+              className={`${chipBase} whitespace-nowrap ${selectedDate === yesterday ? 'bg-[#00FF00] text-black border-[#00FF00]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#00FF00]'}`}
             >
               {tr.historyYesterday}
             </button>
 
-            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2">
+            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 whitespace-nowrap">
               <CalendarDays size={16} className="text-gray-500" />
               <input
                 type="date"
@@ -136,7 +136,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t,
               />
             </div>
 
-            <div className="ml-auto text-xs text-gray-500">
+            <div className="hidden sm:block ml-auto text-xs text-gray-500 whitespace-nowrap">
               {tr.historyDate}:{' '}
               <span className="font-bold text-gray-800">
                 {selectedDate ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString(locale) : ''}
@@ -166,7 +166,7 @@ export default function BankHistoryModal({ isOpen, bankName, bankId, onClose, t,
           </div>
         </div>
 
-        <div className="h-[calc(100%-132px)] bg-white overflow-y-auto">
+        <div className="flex-1 min-h-0 bg-white overflow-y-auto">
           <div className="p-4">
             {!hasVideo && !hasImages && (
               <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center bg-gray-50">

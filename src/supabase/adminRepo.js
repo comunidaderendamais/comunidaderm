@@ -72,6 +72,20 @@ const mapSponsorLogRow = (row) => ({
   createdAt: row?.created_at || null,
 });
 
+const mapUsernameLogRow = (row) => ({
+  id: row?.id || null,
+  profileId: row?.profile_id || null,
+  previousUsername: row?.previous_username || null,
+  nextUsername: row?.next_username || null,
+  actorId: row?.actor_id || null,
+  actorEmail: row?.actor_email || null,
+  reason: row?.reason || '',
+  source: row?.source || null,
+  requestPayload: row?.request_payload || {},
+  resultPayload: row?.result_payload || {},
+  createdAt: row?.created_at || null,
+});
+
 export const adminSearchUsers = async ({
   q = '',
   maxRows = 50,
@@ -138,6 +152,7 @@ export const adminGetUserState = async ({ userId, maxTransactions = 500 } = {}) 
     transactions: txs.map(mapTxRowToTx),
     sponsor: mapSponsorRow(data?.sponsor || null),
     sponsorLogs: Array.isArray(data?.sponsorLogs) ? data.sponsorLogs.map(mapSponsorLogRow) : [],
+    usernameLogs: Array.isArray(data?.usernameLogs) ? data.usernameLogs.map(mapUsernameLogRow) : [],
   };
 
   return { ok: true, error: null, user };
@@ -216,6 +231,21 @@ export const adminReconcileUserSponsor = async ({ userId, reason } = {}) => {
 
   const { data, error } = await client.rpc('admin_reconcile_user_sponsor', {
     target_id: userId,
+    reason_value: reason ? String(reason) : null,
+  });
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || null };
+};
+
+export const adminChangeUserUsername = async ({ userId, username, reason } = {}) => {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'Supabase não configurado.', data: null };
+  if (!userId) return { ok: false, error: 'Usuário inválido.', data: null };
+  if (!String(username || '').trim()) return { ok: false, error: 'Novo login inválido.', data: null };
+
+  const { data, error } = await client.rpc('admin_change_user_username', {
+    target_id: userId,
+    next_username: String(username || '').trim(),
     reason_value: reason ? String(reason) : null,
   });
   if (error) return { ok: false, error: error.message, data: null };
