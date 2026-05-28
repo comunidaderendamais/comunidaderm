@@ -5,7 +5,7 @@ import { calcElitePool, calcElitePayoutPerSlot, computeEliteBoard, ELITE_CATEGOR
 import { getT, fillTemplate, formatDateTime, formatMoneyUsd, formatMoneyUsdInt, getLocaleForLang, translateRankTitle } from '../i18n/i18n.js';
 import { fetchEliteCandidates } from '../supabase/eliteRepo.js';
 import { fetchMyTeamSummary } from '../supabase/dashboardRepo.js';
-import { RANKS } from '../team/teamEngine.js';
+import { calcUsedRankVolumeFromLegRows, RANKS } from '../team/teamEngine.js';
 
 function BonusHeroSection({
   t,
@@ -122,7 +122,9 @@ export default function BonusView({ user, adminConfig, onOpenApn, lang }) {
   const elitePool = eliteInfo.elitePool;
   const currentRankKey = String(summary?.rank?.key || 'FERRO').toUpperCase();
   const currentRankTitle = summary?.rank?.title || 'Ferro';
-  const currentRankVolume = Number(summary?.rank?.volume || 0);
+  const currentRankVolume = Number(
+    summary?.usedVolume ?? calcUsedRankVolumeFromLegRows(summary?.legs, summary?.rank?.key)
+  );
   const myEligibleCat = getEliteCategoryForRank(currentRankKey);
 
   const myAssignedCat = ELITE_CATEGORIES.map((c) => c.key).find((k) =>

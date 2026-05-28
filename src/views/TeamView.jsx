@@ -3,6 +3,7 @@ import TeamOverviewSection from '../team/TeamOverviewSection.jsx';
 import TeamNetworkLevelsCard from '../team/TeamNetworkLevelsCard.jsx';
 import { fetchMyNetwork, fetchMyTeamSummary } from '../supabase/dashboardRepo.js';
 import { getT, translateRankTitle } from '../i18n/i18n.js';
+import { calcUsedRankVolumeFromLegRows } from '../team/teamEngine.js';
 
 export default function TeamView({ user, lang, onOpenApn }) {
   const t = getT(lang);
@@ -40,7 +41,9 @@ export default function TeamView({ user, lang, onOpenApn }) {
   const te2 = Number(summary?.entryFee?.level2 || 0);
   const te3 = Number(summary?.entryFee?.level3 || 0);
   const legs = Array.isArray(summary?.legs) ? summary.legs : [];
-  const currentRankVolume = Number(summary?.rank?.volume || 0);
+  const currentRankVolume = Number(
+    summary?.usedVolume ?? calcUsedRankVolumeFromLegRows(legs, summary?.rank?.key)
+  );
   const nextRank = summary?.rank?.next || null;
   const networkSource =
     Array.isArray(networkLevels) && networkLevels.some((level) => Array.isArray(level?.users) && level.users.length > 0)

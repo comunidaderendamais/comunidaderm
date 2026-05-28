@@ -81,6 +81,25 @@ export const calcLegWeightedVolume = (leg) => {
   return round2(l1 + other * 0.5);
 };
 
+export const getRankTargetByKey = (rankKey) => {
+  const normalizedKey = String(rankKey || 'FERRO').toUpperCase();
+  return RANKS.find((rank) => rank.key === normalizedKey)?.target || RANKS[0].target;
+};
+
+export const calcUsedRankVolumeFromLegRows = (legs, rankKey) => {
+  const rankTarget = getRankTargetByKey(rankKey);
+  const cap = Number(rankTarget || 0) * MAX_LEG_PCT;
+  const applyCap = Number(rankTarget || 0) >= 200;
+
+  return round2(
+    (Array.isArray(legs) ? legs : []).reduce((acc, leg) => {
+      const weighted = Number(leg?.weighted ?? leg?.weightedVolume ?? 0);
+      const used = applyCap ? Math.min(weighted, cap) : weighted;
+      return acc + used;
+    }, 0)
+  );
+};
+
 export const calcRankVolume = (team, rankTarget) => {
   const legs = team?.directLegs || [];
   const cap = Number(rankTarget || 0) * MAX_LEG_PCT;
