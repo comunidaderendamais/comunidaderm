@@ -3,6 +3,7 @@ import { getBankByQuotaKey } from './adminStorage';
 import {
   adminChangeUserUsername,
   adminGetUserNetwork,
+  adminGetRankSnapshot,
   adminGetUserState,
   adminGrantSponsorship,
   adminReassignUserSponsor,
@@ -16,6 +17,7 @@ const safeNum = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+const round2 = (v) => Number(safeNum(v).toFixed(2));
 
 const formatMoney = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formatDate = (iso) => {
@@ -67,6 +69,9 @@ export default function AdminUserView({ config }) {
   const [sponsorAuditBusy, setSponsorAuditBusy] = useState(false);
   const [sponsorAuditRows, setSponsorAuditRows] = useState([]);
   const [sponsorAuditAt, setSponsorAuditAt] = useState(null);
+  const [selectedRankSnapshot, setSelectedRankSnapshot] = useState(null);
+  const [selectedRankBusy, setSelectedRankBusy] = useState(false);
+  const [selectedRankError, setSelectedRankError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,16 +111,36 @@ export default function AdminUserView({ config }) {
       if (!selected?.id) {
         setSelectedFull(null);
         setNetworkLevels([]);
+        setSelectedRankSnapshot(null);
+        setSelectedRankError(null);
+        setSelectedRankBusy(false);
         return;
       }
+      setSelectedRankError(null);
+      setSelectedRankBusy(true);
       const [stateRes, netRes] = await Promise.all([
         adminGetUserState({ userId: selected.id, maxTransactions: 500 }),
         adminGetUserNetwork({ rootId: selected.id, maxDepth: 5 }),
       ]);
       if (cancelled) return;
       setSelectedFull(stateRes.ok ? stateRes.user : null);
+      const [selectedSnapshotRes] = await Promise.all([
+        adminGetRankSnapshot({
+          userId: selected.id,
+          focusUserId: null,
+          maxDepth: 5,
+          persistRank: true,
+        }),
+      ]);
+      if (!cancelled) {
+        setSelectedRankSnapshot(selectedSnapshotRes.ok ? selectedSnapshotRes.snapshot : null);
+        setSelectedRankError(selectedSnapshotRes.ok ? null : selectedSnapshotRes.error || 'Falha ao carregar snapshot.');
+      }
       if (!netRes.ok) {
         setNetworkLevels([]);
+        if (!cancelled) {
+          setSelectedRankBusy(false);
+        }
         return;
       }
       const rows = netRes.rows;
@@ -141,6 +166,9 @@ export default function AdminUserView({ config }) {
           }))
       );
       setNetworkLevels(grouped);
+      if (!cancelled) {
+        setSelectedRankBusy(false);
+      }
     };
     run();
     return () => {
@@ -159,6 +187,8 @@ export default function AdminUserView({ config }) {
     setSponsorReason('');
     setSponsorChangeConfirmOpen(false);
     setSponsorFeedback(null);
+    setSelectedRankSnapshot(null);
+    setSelectedRankError(null);
   }, [selected?.id]);
 
   useEffect(() => {
@@ -445,6 +475,7 @@ export default function AdminUserView({ config }) {
 
   const shown = selectedFull || selected;
   const currentSponsor = shown?.sponsor || null;
+  const selectedRankLabel = String(selectedRankSnapshot?.rank?.key || '—').toUpperCase();
   const sponsorLogs = Array.isArray(shown?.sponsorLogs) ? shown.sponsorLogs : [];
   const usernameLogs = Array.isArray(shown?.usernameLogs) ? shown.usernameLogs : [];
   const currentSponsorLabel = currentSponsor?.username ? `@${currentSponsor.username}` : 'sem patrocinador';
@@ -469,6 +500,28 @@ export default function AdminUserView({ config }) {
       createdLast7Days,
     };
   }, [sponsorAuditRows]);
+  const selectedTopLegs = useMemo(() => {
+    const rows = Array.isArray(selectedRankSnapshot?.legs) ? selectedRankSnapshot.legs : [];
+    const applyCap = Boolean(selectedRankSnapshot?.applyCap);
+    const legCap = safeNum(selectedRankSnapshot?.legCap || 0);
+
+    return rows
+      .map((leg) => {
+        const weightedVolume = safeNum(leg?.weightedVolume || 0);
+        const usedVolume = applyCap ? Math.min(weightedVolume, legCap) : weightedVolume;
+        return {
+          id: String(leg?.id || ''),
+          username: leg?.username || '—',
+          directVolume: safeNum(leg?.directVolume || 0),
+          indirectVolume: safeNum(leg?.indirectVolume || 0),
+          weightedVolume,
+          usedVolume,
+          cappedLoss: Math.max(0, round2(weightedVolume - usedVolume)),
+        };
+      })
+      .sort((a, b) => b.usedVolume - a.usedVolume)
+      .slice(0, 6);
+  }, [selectedRankSnapshot?.applyCap, selectedRankSnapshot?.legCap, selectedRankSnapshot?.legs]);
 
   return (
     <div className="space-y-6">
@@ -889,6 +942,105 @@ export default function AdminUserView({ config }) {
                       <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">ID sponsor</p>
                       <p className="mt-1 text-sm font-black text-gray-900 break-all">{currentSponsor?.id || '—'}</p>
                     </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-sky-100 bg-white p-4">
+                    <div className="flex flex-col gap-2 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+                      <div>
+                        <p className="text-sm font-black text-gray-900">Leitura de rank do usuário selecionado</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          1º nível soma 100%, do 2º ao 5º nível soma 50%, e o investimento pessoal do usuário não entra no rank.
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-sky-800">
+                        {selectedRankBusy ? 'Recalculando...' : selectedRankSnapshot?.rankChanged ? 'Rank atualizado' : 'Snapshot atual'}
+                      </span>
+                    </div>
+
+                    {selectedRankBusy ? (
+                      <p className="mt-4 text-sm text-gray-500">Carregando snapshot operacional do usuário...</p>
+                    ) : !selectedRankSnapshot ? (
+                      <div className="mt-4 space-y-2">
+                        <p className="text-sm text-gray-500">Não foi possível calcular a leitura de rank do usuário.</p>
+                        {selectedRankError ? <p className="text-xs text-gray-400 break-words">Detalhe: {selectedRankError}</p> : null}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mt-4 grid grid-cols-1 min-[540px]:grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Volume direto (1º nível)</p>
+                            <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(selectedRankSnapshot?.directVolume || 0)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Volume indireto (2º ao 5º)</p>
+                            <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(selectedRankSnapshot?.indirectVolume || 0)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Volume de rank usado</p>
+                            <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(selectedRankSnapshot?.usedVolume || 0)}</p>
+                            <p className="mt-2 text-xs text-gray-500">Formula: direto + 50% do indireto.</p>
+                          </div>
+                          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-sky-700">Rank recalculado</p>
+                            <p className="mt-1 text-lg font-black text-sky-900">{selectedRankLabel}</p>
+                            <p className="mt-2 text-xs text-sky-700/80">Base: rede ativa sem investimento pessoal.</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50/70 overflow-hidden">
+                          <div className="border-b border-gray-200 px-4 py-3 flex flex-col gap-3 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-black text-gray-900">Principais pernas do usuário</p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                Mostra quais pernas aceleram o rank no 1º nível e quais perdem volume útil pela trava após ponderar o 2º ao 5º nível.
+                              </p>
+                            </div>
+                            <span className="inline-flex shrink-0 items-center gap-1 self-start whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-black leading-none text-gray-700 min-[640px]:self-center">
+                              Top {selectedTopLegs.length}
+                            </span>
+                          </div>
+
+                          {selectedTopLegs.length === 0 ? (
+                            <p className="p-4 text-sm text-gray-500">Nenhuma perna ativa encontrada para o usuário selecionado.</p>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full text-sm">
+                                <thead className="bg-white">
+                                  <tr className="text-left text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                                    <th className="px-4 py-3 font-black">Perna</th>
+                                    <th className="px-4 py-3 font-black">1º nível</th>
+                                    <th className="px-4 py-3 font-black">2º ao 5º</th>
+                                    <th className="px-4 py-3 font-black">Ponderado</th>
+                                    <th className="px-4 py-3 font-black">Usado</th>
+                                    <th className="px-4 py-3 font-black">Travado</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {selectedTopLegs.map((leg) => (
+                                    <tr key={leg.id || leg.username} className="border-t border-gray-200 bg-transparent">
+                                      <td className="px-4 py-3">
+                                        <span className="font-black text-gray-900">@{leg.username}</span>
+                                      </td>
+                                      <td className="px-4 py-3 font-black text-gray-900">{formatMoney(leg.directVolume)}</td>
+                                      <td className="px-4 py-3 font-black text-gray-900">{formatMoney(leg.indirectVolume)}</td>
+                                      <td className="px-4 py-3 font-black text-gray-900">{formatMoney(leg.weightedVolume)}</td>
+                                      <td className="px-4 py-3 font-black text-emerald-700">{formatMoney(leg.usedVolume)}</td>
+                                      <td className="px-4 py-3 font-black text-amber-700">{formatMoney(leg.cappedLoss)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        <p className="mt-3 text-xs text-gray-500">
+                          {selectedRankSnapshot?.applyCap
+                            ? `Com trava por perna de ${formatMoney(selectedRankSnapshot?.legCap || 0)}.`
+                            : 'Sem trava por perna para a meta atual.'}
+                        </p>
+                      </>
+                    )}
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">

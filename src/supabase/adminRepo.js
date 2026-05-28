@@ -274,6 +274,21 @@ export const adminGetUserNetwork = async ({ rootId, maxDepth = 5 } = {}) => {
   return { ok: true, error: null, rows };
 };
 
+export const adminGetRankSnapshot = async ({ userId, focusUserId = null, maxDepth = 5, persistRank = true } = {}) => {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'Supabase não configurado.', snapshot: null };
+  if (!userId) return { ok: false, error: 'Usuário inválido.', snapshot: null };
+
+  const { data, error } = await client.rpc('admin_get_rank_snapshot', {
+    target_id: userId,
+    focus_profile_id: focusUserId || null,
+    max_depth: maxDepth,
+    persist_rank: Boolean(persistRank),
+  });
+  if (error) return { ok: false, error: error.message, snapshot: null };
+  return { ok: true, error: null, snapshot: data || null };
+};
+
 export const adminFinancialTotals = async () => {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase não configurado.', totals: null };
