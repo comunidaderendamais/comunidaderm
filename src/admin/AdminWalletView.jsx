@@ -43,16 +43,6 @@ const lotSourceMatchesPayment = (lot, paymentId = '', depositTxId = '') => {
   );
 };
 
-const matchUser = (u, q) => {
-  const s = String(q || '').trim().toLowerCase();
-  if (!s) return true;
-  const email = String(u?.email || '').toLowerCase();
-  const username = String(u?.username || '').toLowerCase();
-  const userId = String(u?.userId || '').toLowerCase();
-  const uuid = String(u?.uuid || u?.id || '').toLowerCase();
-  return email.includes(s) || username.includes(s) || userId.includes(s) || uuid.includes(s);
-};
-
 const copyToClipboard = async (text) => {
   try {
     await navigator.clipboard.writeText(String(text || ''));
@@ -62,7 +52,7 @@ const copyToClipboard = async (text) => {
   }
 };
 
-export default function AdminWalletView({ config }) {
+export default function AdminWalletView() {
   const t = getT('pt');
   const [tab, setTab] = useState('deposit');
   const [query, setQuery] = useState('');

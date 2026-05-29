@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Send as SendIcon, X } from 'lucide-react';
 import ErrorBoundary from './app/ErrorBoundary.jsx';
 import LoggedRouter from './app/LoggedRouter.jsx';
@@ -16,17 +16,6 @@ import { fillTemplate, getT } from './i18n/i18n.js';
 import { getInitialLang, normalizeLang, persistLang } from './shared/lang.js';
 import { buildAdminConfigFromSupabase } from './shared/buildAdminConfigFromSupabase.js';
 import { normalizeUser } from './shared/normalizeUser.js';
-
-// --- THEME CONSTANTS ---
-const THEME = {
-  primary: '#00FF00', // Verde Radioativo
-  secondary: '#8A2BE2', // Roxo (Bordas e detalhes)
-  dark: '#1A1A1A', // Topo
-  light: '#FFFFFF', // Fundo Principal
-  gray: '#F3F4F6',
-  textDark: '#333333',
-  textLight: '#FFFFFF'
-};
 
 const stableSerialize = (value) => {
   try {

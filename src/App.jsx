@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
-import OldApp from './OldApp.jsx'
+import { Suspense, lazy, useEffect } from 'react'
+
+const OldApp = lazy(() => import('./OldApp.jsx'))
 
 const isRecordMode = () => {
   try {
@@ -29,7 +30,11 @@ function App() {
     }
   }, [])
 
-  return <OldApp />
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#050816]" />}>
+      <OldApp />
+    </Suspense>
+  )
 }
 
 export default App

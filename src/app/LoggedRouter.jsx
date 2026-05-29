@@ -1,11 +1,15 @@
-import HomeView from '../views/HomeView.jsx';
-import QuotasView from '../views/QuotasView.jsx';
-import TeamView from '../views/TeamView.jsx';
-import WalletView from '../views/WalletView.jsx';
-import ReportsView from '../views/ReportsView.jsx';
-import BonusView from '../views/BonusView.jsx';
-import SettingsView from '../views/SettingsView.jsx';
-import AdminView from '../admin/AdminView.jsx';
+import { Suspense, lazy } from 'react';
+
+const HomeView = lazy(() => import('../views/HomeView.jsx'));
+const QuotasView = lazy(() => import('../views/QuotasView.jsx'));
+const TeamView = lazy(() => import('../views/TeamView.jsx'));
+const WalletView = lazy(() => import('../views/WalletView.jsx'));
+const ReportsView = lazy(() => import('../views/ReportsView.jsx'));
+const BonusView = lazy(() => import('../views/BonusView.jsx'));
+const SettingsView = lazy(() => import('../views/SettingsView.jsx'));
+const AdminView = lazy(() => import('../admin/AdminView.jsx'));
+
+const RouterFallback = () => <div className="min-h-[320px] rounded-[32px] border border-slate-200 bg-white/80" />;
 
 export default function LoggedRouter({
   currentView,
@@ -23,14 +27,16 @@ export default function LoggedRouter({
   isAdmin,
   adminViewProps,
 }) {
+  const renderWithSuspense = (node) => <Suspense fallback={<RouterFallback />}>{node}</Suspense>;
+
   if (currentView === 'admin') {
     if (!isAdmin) return null;
-    return <AdminView {...(adminViewProps || {})} />;
+    return renderWithSuspense(<AdminView {...(adminViewProps || {})} />);
   }
 
   switch (currentView) {
     case 'home':
-      return (
+      return renderWithSuspense(
         <HomeView
           lang={lang}
           adminConfig={adminConfig}
@@ -43,7 +49,7 @@ export default function LoggedRouter({
         />
       );
     case 'quotas':
-      return (
+      return renderWithSuspense(
         <QuotasView
           user={user}
           setUser={setUser}
@@ -55,9 +61,9 @@ export default function LoggedRouter({
         />
       );
     case 'team':
-      return <TeamView user={user} lang={lang} onOpenApn={onOpenApn} />;
+      return renderWithSuspense(<TeamView user={user} lang={lang} onOpenApn={onOpenApn} />);
     case 'wallet':
-      return (
+      return renderWithSuspense(
         <WalletView
           setCurrentView={setCurrentView}
           user={user}
@@ -67,13 +73,12 @@ export default function LoggedRouter({
         />
       );
     case 'reports':
-      return <ReportsView user={user} lang={lang} />;
+      return renderWithSuspense(<ReportsView user={user} lang={lang} />);
     case 'bonus':
-      return <BonusView user={user} adminConfig={adminConfig} onOpenApn={onOpenApn} lang={lang} />;
+      return renderWithSuspense(<BonusView user={user} adminConfig={adminConfig} onOpenApn={onOpenApn} lang={lang} />);
     case 'settings':
-      return <SettingsView user={user} setUser={setUser} lang={lang} />;
+      return renderWithSuspense(<SettingsView user={user} setUser={setUser} lang={lang} />);
     default:
       return null;
   }
 }
-

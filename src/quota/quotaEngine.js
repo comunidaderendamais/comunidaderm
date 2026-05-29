@@ -77,7 +77,6 @@ export const calcDesistPenaltyPct = ({ startAt, now = new Date(), cycleMonths })
 
 export const requestDesistance = ({ user, adminConfig, lotId, now = new Date() }) => {
   const nowIso = now.toISOString();
-  const nowTs = now.getTime();
   const nextUser = normalizeUserCycles(user);
   const lots = Array.isArray(nextUser.quotaLots) ? nextUser.quotaLots : [];
   const lot = lots.find((l) => l.id === lotId);

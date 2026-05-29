@@ -3,6 +3,7 @@ import { BANK_STATUS } from '../admin/adminStorage.js';
 import HomeOverviewSection, { HomeRecentEarningsSection } from '../home/HomeOverviewSection.jsx';
 import { fillTemplate, formatDateTime, formatMoneyUsd, formatMoneyUsdInt, getT, translateRankTitle, translateTransactionType } from '../i18n/i18n.js';
 import { normalizeUser } from '../shared/normalizeUser.js';
+import { getCurrentRankDisplayVolume } from '../team/rankSummary.js';
 
 export default function HomeView({ lang, adminConfig, publicStats, user, teamSummary, onOpenBankHistory, onOpenReports, onOpenQuotas }) {
   const t = getT(lang);
@@ -14,12 +15,13 @@ export default function HomeView({ lang, adminConfig, publicStats, user, teamSum
   const formatMoney = (v) => formatMoneyUsd(v, lang);
 
   const currentUser = normalizeUser(user);
+  const currentRankVolume = getCurrentRankDisplayVolume(teamSummary);
 
   const rankTitle = translateRankTitle(teamSummary?.rank?.title || currentUser?.rankKey || 'Ferro', t);
   const nextRank = teamSummary?.rank?.next || null;
   const rankDesc = nextRank
     ? fillTemplate(t.homeRankDescTemplate, {
-        current: formatMoneyUsdInt(Number(teamSummary?.rank?.volume || 0), lang),
+        current: formatMoneyUsdInt(currentRankVolume, lang),
         target: formatMoneyUsdInt(Number(nextRank?.target || 0), lang),
         next: translateRankTitle(nextRank?.title || nextRank?.key || '', t),
       })

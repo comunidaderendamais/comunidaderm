@@ -41,7 +41,6 @@ export default function QuotasView({ user, setUser, adminConfig, publicStats, on
   };
 
   const formatMoney = (v) => formatMoneyUsd(v, lang);
-  const round2 = (n) => Number(Number(n || 0).toFixed(2));
   const sold = Number(publicStats?.globalSold ?? adminConfig?.globalSold ?? 0);
   const remainingGlobalQuotas = Math.max(0, QUOTA_GLOBAL_LIMIT - sold);
   const totalHoldings = plans.reduce((acc, plan) => acc + Number(currentUser?.holdings?.[plan.key] || 0), 0);

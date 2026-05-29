@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BANK_STATUS } from './adminStorage';
-import AdminSupport from './AdminSupport';
-import AdminFaq from './AdminFaq';
-import AdminBankHistoryView from './AdminBankHistoryView';
-import AdminDailyPayoutOverridePanel from './AdminDailyPayoutOverridePanel';
-import AdminDailyPayoutMonitor from './AdminDailyPayoutMonitor';
 import { QUOTA_GLOBAL_LIMIT } from '../quota/quotaEngine';
 import { calcElitePool, calcElitePayoutPerSlot, computeEliteBoard, ensureEliteAchievedAt, ELITE_CATEGORIES } from '../elite/eliteEngine';
-import AdminUserView from './AdminUserView';
-import AdminWalletView from './AdminWalletView';
 import { adminFinancialTotals, adminListElitePayoutBatches, adminListElitePayoutItems, adminSearchUsers } from '../supabase/adminRepo.js';
+
+const AdminSupport = lazy(() => import('./AdminSupport'));
+const AdminFaq = lazy(() => import('./AdminFaq'));
+const AdminBankHistoryView = lazy(() => import('./AdminBankHistoryView'));
+const AdminDailyPayoutOverridePanel = lazy(() => import('./AdminDailyPayoutOverridePanel'));
+const AdminDailyPayoutMonitor = lazy(() => import('./AdminDailyPayoutMonitor'));
+const AdminUserView = lazy(() => import('./AdminUserView'));
+const AdminWalletView = lazy(() => import('./AdminWalletView'));
 
 const statusOptions = [
   { value: BANK_STATUS.active, label: 'Ativa' },
@@ -38,6 +39,12 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
   const [selectedBatchItems, setSelectedBatchItems] = useState([]);
   const [eliteProcessBusy, setEliteProcessBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
+
+  const renderLazySection = (node) => (
+    <Suspense fallback={<div className="min-h-[240px] rounded-2xl border border-gray-100 bg-white" />}>
+      {node}
+    </Suspense>
+  );
 
   useEffect(() => {
     setDraft(config);
@@ -375,7 +382,7 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
             </div>
           </div>
 
-          <AdminDailyPayoutOverridePanel banks={banks} />
+          {renderLazySection(<AdminDailyPayoutOverridePanel banks={banks} />)}
 
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <h3 className="text-lg font-black text-gray-800">Bolsão Elite (quinzenal)</h3>
@@ -673,7 +680,7 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
             ))}
           </div>
 
-          <AdminBankHistoryView banks={banks} />
+          {renderLazySection(<AdminBankHistoryView banks={banks} />)}
 
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
             <button
@@ -704,7 +711,7 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
         </>
       )}
 
-      {tab === 'support' && (
+      {tab === 'support' && renderLazySection(
         <AdminSupport
           draft={draft}
           setDraft={setDraft}
@@ -712,13 +719,13 @@ export default function AdminView({ config, onSave, onSimulateElitePayout }) {
         />
       )}
 
-      {tab === 'monitor' && <AdminDailyPayoutMonitor />}
+      {tab === 'monitor' && renderLazySection(<AdminDailyPayoutMonitor />)}
 
-      {tab === 'faq' && <AdminFaq />}
+      {tab === 'faq' && renderLazySection(<AdminFaq />)}
 
-      {tab === 'users' && <AdminUserView config={draft} />}
+      {tab === 'users' && renderLazySection(<AdminUserView config={draft} />)}
 
-      {tab === 'wallet' && <AdminWalletView config={draft} />}
+      {tab === 'wallet' && renderLazySection(<AdminWalletView />)}
     </div>
   );
 }
